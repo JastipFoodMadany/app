@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<meta name="theme-color" content="#09090b">
+<title>Admin - JastipFood</title>
+<script src="https://cdn.tailwindcss.com/3.4.17"></script>
+<style>
+  body { -webkit-tap-highlight-color: transparent; padding-bottom: calc(env(safe-area-inset-bottom) + 2rem); }
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+  .no-scrollbar { scrollbar-width: none; }
+  .btn-gold { background: linear-gradient(90deg,#f59e0b,#d97706); color:#09090b; font-weight:700; border-radius:.75rem; min-height:44px; padding:0 1rem; display:inline-flex; align-items:center; justify-content:center; gap:.5rem; }
+  .btn-gold:disabled { opacity:.6; pointer-events:none; }
+  .btn-ghost { border:1px solid #3f3f46; color:#e4e4e7; border-radius:.75rem; min-height:44px; padding:0 1rem; font-weight:600; display:inline-flex; align-items:center; justify-content:center; }
+  .btn-ghost:active { background:#27272a; }
+  .btn-ghost:disabled { opacity:.6; pointer-events:none; }
+  .field { width:100%; background:#09090b; border:1px solid #3f3f46; border-radius:.75rem; padding:.7rem .9rem; font-size:16px; color:#fafafa; min-height:48px; }
+  .field:focus { outline:none; border-color:#f59e0b; box-shadow:0 0 0 3px rgba(245,158,11,.2); }
+  .chip { flex:none; min-height:40px; padding:0 1rem; border-radius:999px; border:1px solid #3f3f46; color:#d4d4d8; font-size:.875rem; font-weight:600; background:#18181b; }
+  .chip.active { background:#f59e0b; border-color:#f59e0b; color:#09090b; }
+  .toast { position:fixed; left:50%; bottom:calc(env(safe-area-inset-bottom) + 1.5rem); transform:translate(-50%,20px); opacity:0; pointer-events:none; transition:all .25s; z-index:80; max-width:calc(100% - 2rem); background:#27272a; border:1px solid #52525b; color:#fafafa; padding:.7rem 1rem; border-radius:.75rem; font-size:.875rem; text-align:center; }
+  .toast.show { opacity:1; transform:translate(-50%,0); }
+  .toast.err { border-color:#ef4444; background:#3f1d1d; }
+</style>
+</head>
+<body class="bg-zinc-950 text-gray-100 font-sans min-h-screen">
+
+<!-- Login -->
+<section id="login" class="hidden min-h-screen flex items-center justify-center px-4">
+  <form id="form-login" class="w-full max-w-sm bg-zinc-900 border border-zinc-800 rounded-2xl p-6 space-y-4" novalidate>
+    <h1 class="text-xl font-extrabold text-amber-400 text-center">✨ Admin JastipFood</h1>
+    <div>
+      <label for="pin" class="text-sm text-zinc-300 font-medium">PIN admin</label>
+      <input id="pin" type="password" class="field mt-1" autocomplete="current-password" maxlength="64" placeholder="Masukkan PIN">
+    </div>
+    <p id="login-err" class="text-sm text-red-400 hidden"></p>
+    <button id="btn-login" type="submit" class="btn-gold w-full">Masuk</button>
+  </form>
+</section>
+
+<!-- Dashboard -->
+<div id="app" class="hidden">
+  <header class="bg-zinc-900/95 backdrop-blur border-b border-amber-600/30 sticky top-0 z-40" style="padding-top:env(safe-area-inset-top)">
+    <div class="max-w-4xl mx-auto px-4 py-2.5 flex items-center justify-between gap-2">
+      <h1 class="text-lg font-extrabold text-amber-400">✨ Pesanan</h1>
+      <div class="flex items-center gap-2">
+        <span id="updated" class="text-[11px] text-zinc-500"></span>
+        <button id="btn-refresh" class="btn-ghost !min-h-[40px] text-sm" aria-label="Muat ulang">⟳</button>
+        <button id="btn-logout" class="btn-ghost !min-h-[40px] text-sm">Keluar</button>
+      </div>
+    </div>
+    <div id="chips" class="max-w-4xl mx-auto px-4 pb-3 flex gap-2 overflow-x-auto no-scrollbar"></div>
+  </header>
+  <main class="max-w-4xl mx-auto px-4 pt-4">
+    <div id="list" class="grid grid-cols-1 md:grid-cols-2 gap-4"></div>
+  </main>
+</div>
+
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+<script>
+  const GAS_URL = "https://script.google.com/macros/s/AKfycbxCxDH8k8H13khBl6pfLe6YULegeO8T_gZgXKFGnNEOZx-4BcckjBIEdc6UOLQLwCRBSA/exec";
+  const REFRESH_MS = 30000;
+
+  const $ = (s) => document.querySelector(s);
+  const rupiah = (n) => 'Rp ' + Number(n || 0).toLocaleString('id-ID');
+  const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
+  const ss = {
+    get() { try { return sessionStorage.getItem('jf_admin') || ''; } catch (e) { return ''; } },
+    set(v) { try { v ? sessionStorage.setItem('jf_admin', v) : sessionStorage.removeItem('jf_admin'); } catch (e) { /* abaikan */ } }
+  };
+
+  let token = ss.get();
+  let data = { pesanan: [], alur: {}, statusList: [] };
+  let filter = 'Aktif';
+  let timer = null, busy = false;
+  let drivers = [];
+
+  let toastTimer;
+  function toast(msg, err) {
+    const t = $('#toast');
+    t.textContent = msg;
+    t.className = 'toast show' + (err ? ' err' : '');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { t.className = 'toast'; }, 3200);
+  }
+
+  async function api(body) {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 25000);
+    try {
+      const res = await fetch(GAS_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify(body),
+        signal: ctrl.signal
+      });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const j = await res.json();
+      if (!j.ok) {
+        if (j.sesi) { logout(true); }
+        throw Object.assign(new Error(j.pesan || 'Gagal.'), { server: true });
+      }
+      return j;
+    } finally { clearTimeout(t); }
+  }
+
+  /* ---------- Login / logout ---------- */
+  function showLogin() {
+    $('#app').classList.add('hidden');
+    $('#login').classList.remove('hidden');
+    $('#pin').value = '';
+    stopTimer();
+  }
+  function showApp() {
+    $('#login').classList.add('hidden');
+    $('#app').classList.remove('hidden');
+  }
+  function logout(expired) {
+    token = ''; ss.set('');
+    showLogin();
+    if (expired) { const e = $('#login-err'); e.textContent = 'Sesi berakhir. Silakan masuk lagi.'; e.classList.remove('hidden'); }
+  }
+
+  $('#form-login').addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    const pin = $('#pin').value;
+    const err = $('#login-err');
+    err.classList.add('hidden');
+    if (!pin) { err.textContent = 'Isi PIN dulu.'; err.classList.remove('hidden'); return; }
+    const btn = $('#btn-login');
+    btn.disabled = true; btn.textContent = 'Memeriksa…';
+    try {
+      const res = await api({ aksi: 'admin_login', pin });
+      token = res.token; ss.set(token);
+      showApp();
+      await muat();
+      startTimer();
+    } catch (e) {
+      err.textContent = e.server ? e.message : 'Koneksi bermasalah. Coba lagi.';
+      err.classList.remove('hidden');
+    } finally {
+      btn.disabled = false; btn.textContent = 'Masuk';
+      $('#pin').value = '';
+    }
+  });
+  $('#btn-logout').addEventListener('click', () => logout(false));
+
+  /* ---------- Data ---------- */
+  async function muat(diam) {
+    if (busy || !token) return;
+    busy = true;
+    const btn = $('#btn-refresh');
+    if (!diam) btn.disabled = true;
+    try {
+      const res = await api({ aksi: 'admin_list', token });
+      data = res;
+      $('#updated').textContent = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+      if (filter !== 'Driver') render(); else renderChips();
+    } catch (e) {
+      if (!diam && e.server !== true) toast('Koneksi bermasalah. Coba lagi.', true);
+      else if (!diam && token) toast(e.message, true);
+    } finally {
+      busy = false; btn.disabled = false;
+    }
+  }
+  function startTimer() {
+    stopTimer();
+    timer = setInterval(() => { if (!document.hidden) muat(true); }, REFRESH_MS);
+  }
+  function stopTimer() { clearInterval(timer); timer = null; }
+  document.addEventListener('visibilitychange', () => { if (!document.hidden && token) muat(true); });
+  $('#btn-refresh').addEventListener('click', () => muat());
+
+  /* ---------- Tampilan ---------- */
+  const selesai = (s) => s === 'Selesai' || s === 'Dibatalkan';
+  const warna = {
+    'Baru': 'border-amber-500/50 text-amber-300', 'Diproses': 'border-sky-500/50 text-sky-300',
+    'Dibelikan': 'border-violet-500/50 text-violet-300', 'Diantar': 'border-sky-500/50 text-sky-300',
+    'Siap Diambil': 'border-emerald-500/50 text-emerald-300', 'Selesai': 'border-emerald-500/50 text-emerald-300',
+    'Dibatalkan': 'border-red-500/50 text-red-300'
+  };
+
+  function nextStatus(o) {
+    const alur = (data.alur || {})[o.metode] || [];
+    const i = alur.indexOf(o.status);
+    return i >= 0 && i < alur.length - 1 ? alur[i + 1] : null;
+  }
+
+  function renderChips() {
+    const L = data.pesanan;
+    const tabs = [
+      ['Aktif', L.filter((o) => !selesai(o.status)).length],
+      ['Selesai', L.filter((o) => o.status === 'Selesai').length],
+      ['Dibatalkan', L.filter((o) => o.status === 'Dibatalkan').length],
+      ['Semua', L.length],
+      ['Driver', drivers.length]
+    ];
+    $('#chips').innerHTML = tabs.map(([k, n]) =>
+      `<button class="chip ${k === filter ? 'active' : ''}" data-filter="${k}">${k} (${n})</button>`).join('');
+  }
+
+  function cardHTML(o) {
+    const pickup = o.metode === 'pickup';
+    const wa = String(o.wa).replace(/\D/g, '');
+    const next = nextStatus(o);
+    const opsi = (data.statusList || []).map((s) =>
+      `<option value="${esc(s)}" ${s === o.status ? 'selected' : ''}>${esc(s)}</option>`).join('');
+    return `<article class="bg-zinc-900 border border-zinc-800 rounded-2xl p-4 space-y-3" data-card="${esc(o.id)}">
+      <div class="flex items-start justify-between gap-2">
+        <div>
+          <p class="font-extrabold text-amber-300 tracking-wide select-all">${esc(o.id)}</p>
+          <p class="text-xs text-zinc-500">${esc(o.waktu)}</p>
+        </div>
+        <div class="flex flex-col items-end gap-1">
+          <span class="text-xs px-2 py-0.5 rounded-full border ${warna[o.status] || 'border-zinc-600 text-zinc-300'}">${esc(o.status)}</span>
+          <span class="text-[11px] ${pickup ? 'text-emerald-300' : 'text-sky-300'}">${pickup ? '🏪 Ambil sendiri' : '🛵 Antar'}</span>
+        </div>
+      </div>
+      <div class="text-sm space-y-1">
+        <p class="font-semibold">${esc(o.nama)} · <a class="text-amber-400 underline" href="https://wa.me/${wa}" target="_blank" rel="noopener">${esc(o.wa)}</a></p>
+        ${pickup
+          ? `<p class="text-zinc-400">Waktu ambil: ${esc(o.jadwal || 'Secepatnya')}</p>`
+          : `<p class="text-zinc-300">${esc(o.alamat)}</p>
+             <p class="text-zinc-500 text-xs">${esc(o.zona)}${o.jarak !== '' ? ' · ' + esc(o.jarak) + ' km' : ''}
+               ${o.lokasi && /^https:\/\//.test(o.lokasi) ? ` · <a class="text-amber-400 underline" href="${esc(o.lokasi)}" target="_blank" rel="noopener">Buka peta</a>` : ''}</p>`}
+        <p class="text-xs ${o.driver ? 'text-emerald-300' : 'text-zinc-500'}">🛵 ${o.driver ? esc(o.driver) : 'Belum ada driver'}${o.komisi ? ' · komisi ' + rupiah(o.komisi) : ''}</p>
+        ${o.catatan ? `<p class="text-xs text-amber-200/80">📝 ${esc(o.catatan)}</p>` : ''}
+      </div>
+      <div class="bg-zinc-950 rounded-xl p-3 text-sm space-y-1">
+        <p class="text-zinc-200">${esc(o.pesanan)}</p>
+        <p class="flex justify-between text-zinc-500 text-xs pt-1 border-t border-zinc-800"><span>Subtotal ${rupiah(o.subtotal)} + ongkir ${rupiah(o.ongkir)}</span><span class="font-bold text-amber-400 text-sm">${rupiah(o.total)}</span></p>
+      </div>
+      <div class="flex gap-2 items-center">
+        ${next ? `<button class="btn-gold flex-1 text-sm" data-set="${esc(o.id)}" data-status="${esc(next)}">Lanjut: ${esc(next)}</button>` : ''}
+        <select class="field !min-h-[44px] !py-2 ${next ? 'w-36' : 'flex-1'}" data-pilih="${esc(o.id)}" aria-label="Ubah status">${opsi}</select>
+      </div>
+    </article>`;
+  }
+
+  function render() {
+    renderChips();
+    if (filter === 'Driver') { renderDrivers(); return; }
+    const baru = data.pesanan.filter((o) => o.status === 'Baru').length;
+    document.title = (baru ? `(${baru}) ` : '') + 'Admin - JastipFood';
+    const L = data.pesanan.filter((o) =>
+      filter === 'Semua' ? true : filter === 'Aktif' ? !selesai(o.status) : o.status === filter);
+    $('#list').innerHTML = L.length
+      ? L.map(cardHTML).join('')
+      : '<p class="col-span-full text-center text-zinc-500 py-12">Tidak ada pesanan.</p>';
+  }
+
+  async function ubahStatus(id, status, el) {
+    if (status === 'Dibatalkan' && !confirm('Batalkan pesanan ' + id + '?')) { render(); return; }
+    if (el) el.disabled = true;
+    try {
+      await api({ aksi: 'admin_status', token, id, status });
+      const o = data.pesanan.find((x) => x.id === id);
+      if (o) o.status = status;
+      render();
+      toast(id + ' → ' + status);
+    } catch (e) {
+      toast(e.server ? e.message : 'Koneksi bermasalah. Coba lagi.', true);
+      render();
+    }
+  }
+
+  document.addEventListener('click', (e) => {
+    const f = e.target.closest('[data-filter]');
+    if (f) { filter = f.dataset.filter; render(); if (filter === 'Driver') muatDriver(); return; }
+    const b = e.target.closest('[data-set]');
+    if (b) ubahStatus(b.dataset.set, b.dataset.status, b);
+  });
+  document.addEventListener('change', (e) => {
+    const s = e.target.closest('[data-pilih]');
+    if (s) ubahStatus(s.dataset.pilih, s.value, s);
+  });
+
+  /* ---------- Driver ---------- */
+  async function muatDriver() {
+    try { const r = await api({ aksi: 'admin_driver_list', token }); drivers = r.driver; render(); }
+    catch (e) { toast(e.server ? e.message : 'Koneksi bermasalah.', true); }
+  }
+  function renderDrivers() {
+    $('#list').innerHTML = `
+      <form id="form-driver" class="col-span-full bg-zinc-900 border border-zinc-800 rounded-2xl p-4 grid grid-cols-1 sm:grid-cols-2 gap-3" novalidate>
+        <input type="hidden" id="d-id">
+        <input id="d-nama" class="field" placeholder="Nama driver" maxlength="60">
+        <input id="d-wa" class="field" type="tel" inputmode="numeric" placeholder="WhatsApp (08…)" maxlength="20">
+        <input id="d-dana" class="field" type="tel" inputmode="numeric" placeholder="Nomor DANA" maxlength="20">
+        <input id="d-pin" class="field" type="password" autocomplete="new-password" placeholder="PIN login (min. 6; kosongkan jika tidak diubah)" maxlength="64">
+        <button class="btn-gold sm:col-span-2" type="submit">Simpan driver</button>
+      </form>` + (drivers.length ? drivers.map((d) => `
+      <article class="bg-zinc-900 border border-zinc-800 rounded-2xl p-4 space-y-2 ${d.aktif ? '' : 'opacity-60'}">
+        <div class="flex justify-between items-start gap-2">
+          <div><p class="font-bold">${esc(d.nama)} <span class="text-xs text-zinc-500">${esc(d.id)}</span></p>
+          <p class="text-xs text-zinc-400">WA ${esc(d.wa)} · DANA ${esc(d.dana)}</p></div>
+          <span class="text-xs px-2 py-0.5 rounded-full border ${d.aktif ? 'border-emerald-500/50 text-emerald-300' : 'border-zinc-600 text-zinc-400'}">${d.aktif ? 'Aktif' : 'Nonaktif'}</span>
+        </div>
+        <p class="text-sm">Saldo deposit: <b class="${d.saldo < 1000 ? 'text-red-400' : 'text-amber-400'}">${rupiah(d.saldo)}</b></p>
+        <div class="flex gap-2 flex-wrap">
+          <button class="btn-gold !min-h-[40px] text-sm" data-dsaldo="${esc(d.id)}">Isi saldo</button>
+          <button class="btn-ghost !min-h-[40px] text-sm" data-dedit="${esc(d.id)}">Edit</button>
+          <button class="btn-ghost !min-h-[40px] text-sm" data-dtoggle="${esc(d.id)}">${d.aktif ? 'Nonaktifkan' : 'Aktifkan'}</button>
+        </div>
+      </article>`).join('') : '<p class="col-span-full text-center text-zinc-500 py-8">Belum ada driver.</p>');
+  }
+  async function simpanDriver(p) {
+    try { await api({ aksi: 'admin_driver_simpan', token, ...p }); toast('Driver disimpan'); await muatDriver(); }
+    catch (e) { toast(e.server ? e.message : 'Koneksi bermasalah.', true); }
+  }
+  document.addEventListener('submit', (e) => {
+    if (e.target.id !== 'form-driver') return;
+    e.preventDefault();
+    simpanDriver({ id: $('#d-id').value, nama: $('#d-nama').value, wa: $('#d-wa').value, dana: $('#d-dana').value, pin: $('#d-pin').value, aktif: true });
+  });
+  document.addEventListener('click', async (e) => {
+    const s = e.target.closest('[data-dsaldo]'), ed = e.target.closest('[data-dedit]'), tg = e.target.closest('[data-dtoggle]');
+    if (s) {
+      const v = prompt('Jumlah isi saldo (Rp). Isi angka negatif untuk koreksi:');
+      if (v === null) return;
+      try { const r = await api({ aksi: 'admin_driver_saldo', token, id: s.dataset.dsaldo, jumlah: String(v).replace(/[.\s]/g, ''), catatan: 'Via admin' }); toast('Saldo sekarang ' + rupiah(r.saldo)); await muatDriver(); }
+      catch (err) { toast(err.server ? err.message : 'Koneksi bermasalah.', true); }
+    } else if (ed) {
+      const d = drivers.find((x) => x.id === ed.dataset.dedit); if (!d) return;
+      $('#d-id').value = d.id; $('#d-nama').value = d.nama; $('#d-wa').value = d.wa; $('#d-dana').value = d.dana; $('#d-pin').value = '';
+      $('#d-nama').scrollIntoView({ block: 'center', behavior: 'smooth' });
+    } else if (tg) {
+      const d = drivers.find((x) => x.id === tg.dataset.dtoggle); if (!d) return;
+      simpanDriver({ id: d.id, nama: d.nama, wa: d.wa, dana: d.dana, pin: '', aktif: !d.aktif });
+    }
+  });
+
+  /* ---------- Mulai ---------- */
+  (async function init() {
+    if (!token) { showLogin(); return; }
+    showApp();
+    await muat();
+    if (token) startTimer();
+  })();
+</script>
+</body>
+</html>

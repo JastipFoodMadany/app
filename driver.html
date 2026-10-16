@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<meta name="theme-color" content="#09090b">
+<title>Driver - JastipFood</title>
+<script src="https://cdn.tailwindcss.com/3.4.17"></script>
+<style>
+  body { -webkit-tap-highlight-color: transparent; padding-bottom: calc(env(safe-area-inset-bottom) + 2rem); }
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+  .no-scrollbar { scrollbar-width: none; }
+  .btn-gold { background: linear-gradient(90deg,#f59e0b,#d97706); color:#09090b; font-weight:700; border-radius:.75rem; min-height:46px; padding:0 1rem; display:inline-flex; align-items:center; justify-content:center; gap:.5rem; }
+  .btn-gold:disabled { opacity:.6; pointer-events:none; }
+  .btn-ghost { border:1px solid #3f3f46; color:#e4e4e7; border-radius:.75rem; min-height:44px; padding:0 1rem; font-weight:600; display:inline-flex; align-items:center; justify-content:center; }
+  .btn-ghost:active { background:#27272a; }
+  .btn-ghost:disabled { opacity:.6; pointer-events:none; }
+  .field { width:100%; background:#09090b; border:1px solid #3f3f46; border-radius:.75rem; padding:.7rem .9rem; font-size:16px; color:#fafafa; min-height:48px; }
+  .field:focus { outline:none; border-color:#f59e0b; box-shadow:0 0 0 3px rgba(245,158,11,.2); }
+  .chip { flex:none; min-height:40px; padding:0 1rem; border-radius:999px; border:1px solid #3f3f46; color:#d4d4d8; font-size:.875rem; font-weight:600; background:#18181b; }
+  .chip.active { background:#f59e0b; border-color:#f59e0b; color:#09090b; }
+  .toast { position:fixed; left:50%; bottom:calc(env(safe-area-inset-bottom) + 1.5rem); transform:translate(-50%,20px); opacity:0; pointer-events:none; transition:all .25s; z-index:80; max-width:calc(100% - 2rem); background:#27272a; border:1px solid #52525b; color:#fafafa; padding:.7rem 1rem; border-radius:.75rem; font-size:.875rem; text-align:center; }
+  .toast.show { opacity:1; transform:translate(-50%,0); }
+  .toast.err { border-color:#ef4444; background:#3f1d1d; }
+</style>
+</head>
+<body class="bg-zinc-950 text-gray-100 font-sans min-h-screen">
+
+<section id="login" class="hidden min-h-screen flex items-center justify-center px-4">
+  <form id="form-login" class="w-full max-w-sm bg-zinc-900 border border-zinc-800 rounded-2xl p-6 space-y-4" novalidate>
+    <h1 class="text-xl font-extrabold text-amber-400 text-center">🛵 Driver JastipFood</h1>
+    <div>
+      <label for="wa" class="text-sm text-zinc-300 font-medium">Nomor WhatsApp</label>
+      <input id="wa" type="tel" inputmode="numeric" class="field mt-1" autocomplete="username" placeholder="08123456789" maxlength="20">
+    </div>
+    <div>
+      <label for="pin" class="text-sm text-zinc-300 font-medium">PIN</label>
+      <input id="pin" type="password" class="field mt-1" autocomplete="current-password" maxlength="64">
+    </div>
+    <p id="login-err" class="text-sm text-red-400 hidden"></p>
+    <button id="btn-login" type="submit" class="btn-gold w-full">Masuk</button>
+  </form>
+</section>
+
+<div id="app" class="hidden">
+  <header class="bg-zinc-900/95 backdrop-blur border-b border-amber-600/30 sticky top-0 z-40" style="padding-top:env(safe-area-inset-top)">
+    <div class="max-w-3xl mx-auto px-4 py-2.5 flex items-center justify-between gap-2">
+      <div class="min-w-0">
+        <p id="h-nama" class="font-extrabold text-amber-400 truncate"></p>
+        <p class="text-xs text-zinc-400">Saldo <b id="h-saldo" class="text-zinc-200"></b> · bisa ambil <b id="h-sisa" class="text-zinc-200"></b> pesanan</p>
+      </div>
+      <div class="flex gap-2 shrink-0">
+        <button id="btn-refresh" class="btn-ghost !min-h-[40px] text-sm" aria-label="Muat ulang">⟳</button>
+        <button id="btn-logout" class="btn-ghost !min-h-[40px] text-sm">Keluar</button>
+      </div>
+    </div>
+    <div id="chips" class="max-w-3xl mx-auto px-4 pb-3 flex gap-2 overflow-x-auto no-scrollbar"></div>
+  </header>
+  <main class="max-w-3xl mx-auto px-4 pt-4 space-y-3">
+    <div id="warn" class="hidden text-sm bg-red-500/10 border border-red-500/40 text-red-300 rounded-xl px-3 py-2.5">Saldo deposit habis. Hubungi admin untuk isi saldo agar bisa mengambil pesanan.</div>
+    <div id="list" class="space-y-4"></div>
+  </main>
+</div>
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+<script>
+  const GAS_URL = "https://script.google.com/macros/s/AKfycbxCxDH8k8H13khBl6pfLe6YULegeO8T_gZgXKFGnNEOZx-4BcckjBIEdc6UOLQLwCRBSA/exec";
+  const REFRESH_MS = 15000;
+  const LANGKAH = { 'Diproses': 'Sudah beli', 'Dibelikan': 'Mulai antar', 'Diantar': 'Selesai ✓' };
+  const $ = (s) => document.querySelector(s);
+  const rupiah = (n) => 'Rp ' + Number(n || 0).toLocaleString('id-ID');
+  const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
+  const ls = {
+    get() { try { return localStorage.getItem('jf_drv') || ''; } catch (e) { return ''; } },
+    set(v) { try { v ? localStorage.setItem('jf_drv', v) : localStorage.removeItem('jf_drv'); } catch (e) { /* abaikan */ } }
+  };
+
+  let token = ls.get(), data = null, tab = 'baru', timer = null, busy = false, baruIds = null;
+
+  let toastTimer;
+  function toast(msg, err) {
+    const t = $('#toast'); t.textContent = msg; t.className = 'toast show' + (err ? ' err' : '');
+    clearTimeout(toastTimer); toastTimer = setTimeout(() => { t.className = 'toast'; }, 3200);
+  }
+
+  async function api(body) {
+    const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), 25000);
+    try {
+      const res = await fetch(GAS_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(body), signal: ctrl.signal });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const j = await res.json();
+      if (!j.ok) { if (j.sesi) logout(true); throw Object.assign(new Error(j.pesan || 'Gagal.'), { server: true }); }
+      return j;
+    } finally { clearTimeout(t); }
+  }
+  const pesanErr = (e) => (e.server ? e.message : 'Koneksi bermasalah. Coba lagi.');
+
+  /* ---------- Login ---------- */
+  function showLogin() { $('#app').classList.add('hidden'); $('#login').classList.remove('hidden'); stopTimer(); }
+  function showApp() { $('#login').classList.add('hidden'); $('#app').classList.remove('hidden'); }
+  function logout(expired) {
+    token = ''; ls.set(''); data = null; baruIds = null; showLogin();
+    const e = $('#login-err');
+    if (expired) { e.textContent = 'Sesi berakhir. Silakan masuk lagi.'; e.classList.remove('hidden'); } else e.classList.add('hidden');
+  }
+  $('#form-login').addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    const err = $('#login-err'), btn = $('#btn-login');
+    err.classList.add('hidden');
+    if (!$('#wa').value || !$('#pin').value) { err.textContent = 'Isi nomor WhatsApp dan PIN.'; err.classList.remove('hidden'); return; }
+    btn.disabled = true; btn.textContent = 'Memeriksa…';
+    try {
+      const r = await api({ aksi: 'driver_login', wa: $('#wa').value, pin: $('#pin').value });
+      token = r.token; ls.set(token); showApp(); await muat(); startTimer();
+    } catch (e) { err.textContent = pesanErr(e); err.classList.remove('hidden'); }
+    finally { btn.disabled = false; btn.textContent = 'Masuk'; $('#pin').value = ''; }
+  });
+  $('#btn-logout').addEventListener('click', () => logout(false));
+
+  /* ---------- Data ---------- */
+  async function muat(diam) {
+    if (busy || !token) return;
+    busy = true;
+    try {
+      data = await api({ aksi: 'driver_list', token });
+      const ids = new Set(data.baru.map((o) => o.id));
+      if (baruIds && [...ids].some((i) => !baruIds.has(i))) {
+        toast('🛵 Ada pesanan baru!');
+        if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
+      }
+      baruIds = ids;
+      render();
+    } catch (e) { if (!diam) toast(pesanErr(e), true); }
+    finally { busy = false; }
+  }
+  function startTimer() { stopTimer(); timer = setInterval(() => { if (!document.hidden) muat(true); }, REFRESH_MS); }
+  function stopTimer() { clearInterval(timer); timer = null; }
+  document.addEventListener('visibilitychange', () => { if (!document.hidden && token) muat(true); });
+  $('#btn-refresh').addEventListener('click', () => muat());
+
+  /* ---------- Tampilan ---------- */
+  const final = (s) => s === 'Selesai' || s === 'Dibatalkan';
+
+  function cardBaru(o) {
+    const bagian = o.ongkir - data.komisi;
+    return `<article class="bg-zinc-900 border border-zinc-800 rounded-2xl p-4 space-y-3">
+      <div class="flex justify-between text-xs text-zinc-500"><span class="font-bold text-amber-300 text-sm">${esc(o.id)}</span><span>${esc(o.waktu)}</span></div>
+      <p class="text-sm text-zinc-300">📍 ${esc(o.zona)}${o.jarak !== '' ? ' · ' + esc(o.jarak) + ' km' : ''}</p>
+      <p class="text-sm bg-zinc-950 rounded-xl p-3">${esc(o.pesanan)}</p>
+      <div class="text-sm flex justify-between"><span class="text-zinc-400">Tagih pelanggan</span><b class="text-amber-400">${rupiah(o.total)}</b></div>
+      <div class="text-xs text-zinc-500">Makanan ${rupiah(o.subtotal)} + ongkir ${rupiah(o.ongkir)} · bagian ongkir Anda ${rupiah(bagian)}</div>
+      <button class="btn-gold w-full" data-ambil="${esc(o.id)}" ${data.driver.tersedia < data.komisi ? 'disabled' : ''}>Ambil Pesanan</button>
+    </article>`;
+  }
+
+  function cardSaya(o) {
+    const idx = data.alur.indexOf(o.status), next = idx >= 0 && idx < data.alur.length - 1 ? data.alur[idx + 1] : null;
+    const wa = String(o.wa).replace(/\D/g, '');
+    const aktif = !final(o.status);
+    return `<article class="bg-zinc-900 border ${aktif ? 'border-amber-500/40' : 'border-zinc-800'} rounded-2xl p-4 space-y-3">
+      <div class="flex justify-between items-start">
+        <div><p class="font-bold text-amber-300">${esc(o.id)}</p><p class="text-xs text-zinc-500">${esc(o.waktu)}</p></div>
+        <span class="text-xs px-2 py-0.5 rounded-full border ${o.status === 'Dibatalkan' ? 'border-red-500/50 text-red-300' : 'border-amber-500/50 text-amber-300'}">${esc(o.status)}</span>
+      </div>
+      ${aktif ? `<div class="text-sm space-y-1">
+        <p class="font-semibold">${esc(o.nama)} · <a class="text-amber-400 underline" href="https://wa.me/${wa}" target="_blank" rel="noopener">Chat WA</a> · <a class="text-amber-400 underline" href="tel:+${wa}">Telepon</a></p>
+        <p class="text-zinc-300">${esc(o.alamat)}</p>
+        ${o.lokasi && /^https:\/\//.test(o.lokasi) ? `<a class="text-amber-400 underline text-sm" href="${esc(o.lokasi)}" target="_blank" rel="noopener">Buka peta</a>` : ''}
+        ${o.catatan ? `<p class="text-xs text-amber-200/80">📝 ${esc(o.catatan)}</p>` : ''}
+      </div>` : ''}
+      <p class="text-sm bg-zinc-950 rounded-xl p-3">${esc(o.pesanan)}</p>
+      <div class="text-sm flex justify-between"><span class="text-zinc-400">${aktif ? 'Tagih pelanggan' : 'Total'}</span><b class="text-amber-400">${rupiah(o.total)}</b></div>
+      ${aktif ? `<div class="text-xs text-zinc-500">Komisi ${rupiah(data.komisi)} dipotong dari saldo saat Selesai.</div>
+      <div class="flex gap-2">
+        ${next ? `<button class="btn-gold flex-1" data-set="${esc(o.id)}" data-status="${esc(next)}">${esc(LANGKAH[o.status] || next)}</button>` : ''}
+        ${o.status === 'Diproses' ? `<button class="btn-ghost" data-lepas="${esc(o.id)}">Lepas</button>` : ''}
+        <button class="btn-ghost text-red-300" data-set="${esc(o.id)}" data-status="Dibatalkan">Batal</button>
+      </div>` : (o.komisi ? `<p class="text-xs text-zinc-500">Komisi dipotong ${rupiah(o.komisi)}</p>` : '')}
+    </article>`;
+  }
+
+  function render() {
+    const d = data.driver, aktif = data.saya.filter((o) => !final(o.status)), riwayat = data.saya.filter((o) => final(o.status));
+    $('#h-nama').textContent = d.nama;
+    $('#h-saldo').textContent = rupiah(d.saldo);
+    $('#h-sisa').textContent = Math.max(0, Math.floor(d.tersedia / data.komisi));
+    $('#warn').classList.toggle('hidden', d.tersedia >= data.komisi);
+    const tabs = [['baru', 'Baru', data.baru.length], ['aktif', 'Pesanan Saya', aktif.length], ['riwayat', 'Riwayat', riwayat.length]];
+    $('#chips').innerHTML = tabs.map(([k, n, c]) => `<button class="chip ${k === tab ? 'active' : ''}" data-tab="${k}">${n} (${c})</button>`).join('');
+    const list = tab === 'baru' ? data.baru.map(cardBaru) : tab === 'aktif' ? aktif.map(cardSaya) : riwayat.map(cardSaya);
+    $('#list').innerHTML = list.length ? list.join('') : '<p class="text-center text-zinc-500 py-12">Tidak ada pesanan.</p>';
+    document.title = (data.baru.length ? `(${data.baru.length}) ` : '') + 'Driver - JastipFood';
+  }
+
+  async function aksi(body, ok, tombol) {
+    if (tombol) tombol.disabled = true;
+    try { await api({ token, ...body }); toast(ok); await muat(true); }
+    catch (e) { toast(pesanErr(e), true); await muat(true); }
+  }
+
+  document.addEventListener('click', async (e) => {
+    const t = e.target.closest('[data-tab]');
+    if (t) { tab = t.dataset.tab; render(); return; }
+    const a = e.target.closest('[data-ambil]');
+    if (a) {
+      if (!confirm('Ambil pesanan ' + a.dataset.ambil + '?')) return;
+      a.disabled = true;
+      try { await api({ aksi: 'driver_ambil', token, id: a.dataset.ambil }); toast('Pesanan diambil'); tab = 'aktif'; await muat(true); }
+      catch (err) { toast(pesanErr(err), true); await muat(true); }
+      return;
+    }
+    const s = e.target.closest('[data-set]');
+    if (s) {
+      const st = s.dataset.status;
+      if (st === 'Dibatalkan' && !confirm('Batalkan pesanan ' + s.dataset.set + '? Komisi tidak dipotong.')) return;
+      if (st === 'Selesai' && !confirm('Pesanan sudah diterima pelanggan dan dibayar? Komisi akan dipotong.')) return;
+      aksi({ aksi: 'driver_status', id: s.dataset.set, status: st }, st === 'Selesai' ? 'Pesanan selesai' : 'Status: ' + st, s);
+      return;
+    }
+    const l = e.target.closest('[data-lepas]');
+    if (l && confirm('Lepas pesanan ' + l.dataset.lepas + '? Pesanan kembali ke daftar baru.')) {
+      aksi({ aksi: 'driver_lepas', id: l.dataset.lepas }, 'Pesanan dilepas', l);
+    }
+  });
+
+  (async function init() {
+    if (!token) { showLogin(); return; }
+    showApp(); await muat(); if (token) startTimer();
+  })();
+</script>
+</body>
+</html>
