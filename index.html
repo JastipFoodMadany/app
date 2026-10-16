@@ -1,0 +1,909 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="theme-color" content="#09090b">
+    <title>JastipFood - Layanan Pesan Antar Elegan</title>
+    <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+    <style>
+        html { -webkit-text-size-adjust: 100%; }
+        body {
+            -webkit-tap-highlight-color: transparent;
+            padding-bottom: calc(env(safe-area-inset-bottom) + 6.5rem);
+        }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { scrollbar-width: none; }
+
+        /* Tombol */
+        .btn-gold {
+            background: linear-gradient(90deg, #f59e0b, #d97706);
+            color: #09090b; font-weight: 700; border-radius: .75rem;
+            min-height: 44px; padding: 0 1.1rem;
+            display: inline-flex; align-items: center; justify-content: center; gap: .5rem;
+            transition: transform .1s, opacity .2s;
+        }
+        .btn-gold:active { transform: scale(.97); }
+        .btn-gold:disabled { opacity: .6; pointer-events: none; }
+        .btn-ghost {
+            border: 1px solid #3f3f46; color: #e4e4e7; border-radius: .75rem;
+            min-height: 44px; padding: 0 1rem; font-weight: 600;
+            display: inline-flex; align-items: center; justify-content: center; gap: .5rem;
+        }
+        .btn-ghost:active { background: #27272a; }
+        .btn-ghost:disabled { opacity: .6; pointer-events: none; }
+
+        /* Stepper jumlah */
+        .stepper {
+            display: inline-flex; align-items: center; background: #27272a;
+            border: 1px solid rgba(245, 158, 11, .45); border-radius: .75rem; overflow: hidden;
+        }
+        .stepper button { width: 44px; height: 44px; font-size: 1.4rem; line-height: 1; color: #fbbf24; flex: none; }
+        .stepper button:active { background: #3f3f46; }
+        .stepper span { min-width: 2rem; text-align: center; font-weight: 700; }
+        .stepper.full { display: flex; width: 100%; }
+        .stepper.full span { flex: 1; min-width: 0; }
+
+        /* Input (16px agar iOS tidak zoom otomatis) */
+        .field {
+            width: 100%; background: #09090b; border: 1px solid #3f3f46; border-radius: .75rem;
+            padding: .7rem .9rem; font-size: 16px; color: #fafafa; min-height: 48px;
+        }
+        .field::placeholder { color: #71717a; }
+        .field:focus { outline: none; border-color: #f59e0b; box-shadow: 0 0 0 3px rgba(245, 158, 11, .2); }
+        .field.invalid { border-color: #ef4444; }
+        select.field { appearance: none; -webkit-appearance: none; background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='none' stroke='%23a1a1aa' stroke-width='2'><path d='M3 6l5 5 5-5'/></svg>"); background-repeat: no-repeat; background-position: right .9rem center; padding-right: 2.5rem; }
+
+        /* Chip kategori */
+        .chip {
+            flex: none; min-height: 40px; padding: 0 1rem; border-radius: 999px;
+            border: 1px solid #3f3f46; color: #d4d4d8; font-size: .875rem; font-weight: 600;
+            background: #18181b; scroll-snap-align: start;
+        }
+        .chip.active { background: #f59e0b; border-color: #f59e0b; color: #09090b; }
+
+        /* Layanan (Makanan / Ojek) */
+        .svc {
+            min-height: 52px; border-radius: .9rem; border: 1px solid #27272a; background: #18181b;
+            display: flex; align-items: center; justify-content: center; gap: .5rem;
+            font-weight: 700; color: #a1a1aa;
+        }
+        .svc.active { border-color: #f59e0b; color: #fbbf24; background: rgba(245, 158, 11, .08); }
+        .soon { font-size: 10px; background: #3f3f46; color: #d4d4d8; border-radius: 999px; padding: 1px 7px; font-weight: 600; }
+
+        /* Segmen Antar / Ambil Sendiri */
+        .seg { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: .25rem; background: #09090b; border: 1px solid #27272a; border-radius: .9rem; padding: .25rem; }
+        .seg-btn { min-height: 48px; border-radius: .7rem; font-weight: 700; color: #a1a1aa; font-size: .9rem; line-height: 1.15; }
+        .seg-btn small { display: block; font-weight: 500; font-size: 11px; opacity: .85; }
+        .seg-btn.active { background: linear-gradient(90deg, #f59e0b, #d97706); color: #09090b; }
+
+        /* Foto menu */
+        .ph { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; font-size: 2.4rem; background: linear-gradient(135deg, #27272a, #18181b); }
+
+        /* Skeleton */
+        .skeleton {
+            background: linear-gradient(90deg, #18181b 25%, #27272a 37%, #18181b 63%);
+            background-size: 400% 100%; animation: sk 1.4s ease infinite;
+        }
+        @keyframes sk { 0% { background-position: 100% 50%; } 100% { background-position: 0 50%; } }
+
+        /* Bar keranjang */
+        .cartbar {
+            position: fixed; left: 0; right: 0; bottom: 0; z-index: 40;
+            padding: .75rem 1rem calc(.75rem + env(safe-area-inset-bottom));
+            transform: translateY(130%); transition: transform .3s ease;
+        }
+        .cartbar.show { transform: none; }
+
+        /* Bottom sheet */
+        .sheet { position: fixed; inset: 0; z-index: 60; visibility: hidden; transition: visibility .3s; }
+        .sheet.open { visibility: visible; }
+        .sheet-backdrop { position: absolute; inset: 0; background: rgba(0, 0, 0, .7); opacity: 0; transition: opacity .3s; }
+        .sheet.open .sheet-backdrop { opacity: 1; }
+        .sheet-panel {
+            position: absolute; left: 0; right: 0; bottom: 0; margin: 0 auto; max-width: 34rem;
+            max-height: 92vh; max-height: 92dvh; display: flex; flex-direction: column;
+            background: #18181b; border: 1px solid #27272a; border-bottom: 0;
+            border-radius: 1.25rem 1.25rem 0 0;
+            transform: translateY(100%); transition: transform .3s ease;
+        }
+        .sheet.open .sheet-panel { transform: none; }
+        .sheet-body {
+            overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch;
+            padding: 0 1.1rem calc(1.25rem + env(safe-area-inset-bottom));
+        }
+
+        /* Toast */
+        .toast {
+            position: fixed; left: 50%; z-index: 80; max-width: calc(100% - 2rem);
+            bottom: calc(env(safe-area-inset-bottom) + 6rem);
+            transform: translate(-50%, 20px); opacity: 0; pointer-events: none;
+            transition: all .25s; background: #27272a; border: 1px solid #52525b;
+            color: #fafafa; padding: .7rem 1rem; border-radius: .75rem; font-size: .875rem; text-align: center;
+        }
+        .toast.show { opacity: 1; transform: translate(-50%, 0); }
+        .toast.err { border-color: #ef4444; background: #3f1d1d; }
+    </style>
+</head>
+<body class="bg-zinc-950 text-gray-100 font-sans min-h-screen">
+
+    <!-- Header -->
+    <header class="bg-zinc-900/95 backdrop-blur border-b border-amber-600/30 sticky top-0 z-50" style="padding-top: env(safe-area-inset-top)">
+        <div class="max-w-4xl mx-auto px-4 py-2.5 flex justify-between items-center">
+            <h1 class="text-xl font-extrabold tracking-wide flex items-center gap-2">
+                <span class="text-amber-400">✨</span>
+                <span class="bg-gradient-to-r from-amber-200 via-amber-400 to-amber-500 bg-clip-text text-transparent">JastipFood</span>
+            </h1>
+            <button data-act="open-track" class="btn-ghost text-sm text-amber-300 border-amber-500/40" aria-label="Lacak pesanan">
+                <span>📦</span> Lacak
+            </button>
+        </div>
+
+        <!-- Pencarian + kategori -->
+        <div class="max-w-4xl mx-auto px-4 pb-3 space-y-2.5">
+            <input id="cari" type="search" inputmode="search" enterkeyhint="search" autocomplete="off"
+                   placeholder="Cari menu…" class="field !min-h-[44px] !py-2" aria-label="Cari menu">
+            <div id="chips" class="flex gap-2 overflow-x-auto no-scrollbar -mx-4 px-4" style="scroll-snap-type:x proximity"></div>
+        </div>
+    </header>
+
+    <!-- Konten -->
+    <main class="max-w-4xl mx-auto px-4 pt-4">
+        <!-- Layanan -->
+        <div class="grid grid-cols-2 gap-3 mb-5">
+            <button class="svc active" data-act="svc" data-svc="makanan"><span>🍽️</span> Makanan</button>
+            <button class="svc" data-act="svc" data-svc="ojek"><span>🏍️</span> Ojek <span class="soon">Segera</span></button>
+        </div>
+
+        <div id="offline" class="hidden mb-4 text-sm bg-amber-500/10 border border-amber-500/30 text-amber-300 rounded-xl px-3 py-2.5 flex items-center justify-between gap-3">
+            <span>Menampilkan menu tersimpan (koneksi bermasalah).</span>
+            <button data-act="retry" class="font-bold underline shrink-0 min-h-[44px] px-2">Muat ulang</button>
+        </div>
+
+        <div class="flex items-center justify-between mb-4">
+            <h2 class="text-xl font-semibold text-amber-400 border-l-4 border-amber-500 pl-3">Menu Rekomendasi</h2>
+            <span class="text-[10px] text-zinc-500 uppercase tracking-widest">Eksklusif &amp; Segar</span>
+        </div>
+
+        <div id="menu-list" class="grid grid-cols-1 sm:grid-cols-2 gap-4" aria-live="polite"></div>
+    </main>
+
+    <footer class="text-center text-xs text-zinc-600 py-6">&copy; 2026 JastipFood. All rights reserved.</footer>
+
+    <!-- Bar keranjang -->
+    <div id="cartbar" class="cartbar bg-gradient-to-t from-zinc-950 via-zinc-950/95 to-transparent">
+        <button data-act="open-checkout" class="btn-gold w-full !min-h-[56px] !justify-between shadow-xl shadow-amber-900/30 text-base">
+            <span class="flex items-center gap-2"><span>🛒</span><span id="bar-count">0 item</span></span>
+            <span class="flex items-center gap-2"><span id="bar-total">Rp 0</span><span aria-hidden="true">›</span></span>
+        </button>
+    </div>
+
+    <!-- Sheet: Checkout -->
+    <div id="sheet-checkout" class="sheet" role="dialog" aria-modal="true" aria-label="Keranjang dan checkout">
+        <div class="sheet-backdrop" data-close></div>
+        <div class="sheet-panel">
+            <div class="mx-auto mt-2.5 mb-1 h-1.5 w-10 rounded-full bg-zinc-700"></div>
+            <div class="flex items-center justify-between px-4 py-2">
+                <h3 class="text-lg font-bold text-amber-400">Keranjang Saya</h3>
+                <button data-close class="w-11 h-11 text-xl text-zinc-400" aria-label="Tutup">✕</button>
+            </div>
+            <div class="sheet-body">
+                <div id="co-items"></div>
+
+                <!-- Metode -->
+                <div class="pt-4">
+                    <p class="text-sm text-zinc-300 font-medium mb-2">Cara menerima pesanan</p>
+                    <div id="seg" class="seg">
+                        <button type="button" class="seg-btn" data-act="metode" data-m="antar">🛵 Antar<small>Diantar ke alamatmu</small></button>
+                        <button type="button" class="seg-btn" data-act="metode" data-m="pickup">🏪 Ambil Sendiri<small>Gratis ongkir</small></button>
+                    </div>
+                </div>
+
+                <!-- Antar: lokasi & zona -->
+                <div id="sec-antar" class="pt-4 space-y-2.5">
+                    <div id="wrap-gps" class="space-y-2.5">
+                        <button type="button" id="btn-gps" data-act="gps" class="btn-ghost w-full text-amber-300 border-amber-500/40">📍 Gunakan lokasi saya</button>
+                        <p class="text-xs text-zinc-500">Lokasi dipakai untuk menghitung ongkir berdasarkan jarak dan membantu driver menemukan alamatmu.</p>
+                        <div id="gps-info" class="hidden text-sm bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 rounded-xl px-3 py-2.5"></div>
+                        <p id="atau" class="text-center text-xs text-zinc-500">atau pilih zona manual</p>
+                    </div>
+                    <div>
+                        <label for="f-zona" id="lbl-zona" class="sr-only">Zona pengantaran</label>
+                        <select id="f-zona" class="field"></select>
+                        <p id="e-f-zona" class="text-xs text-red-400 mt-1 hidden"></p>
+                    </div>
+                </div>
+
+                <!-- Pickup: info toko & jadwal -->
+                <div id="sec-pickup" class="pt-4 space-y-3 hidden">
+                    <div id="info-toko" class="bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-sm"></div>
+                    <div>
+                        <label for="f-jadwal" class="text-sm text-zinc-300 font-medium">Waktu ambil</label>
+                        <select id="f-jadwal" class="field mt-1"></select>
+                    </div>
+                </div>
+
+                <form id="form" class="space-y-3.5 pt-4" novalidate autocomplete="on">
+                    <input id="f-hp" name="hp_field" tabindex="-1" autocomplete="off" aria-hidden="true" style="position:absolute;left:-9999px;width:1px;height:1px;opacity:0">
+                    <div>
+                        <label for="f-nama" class="text-sm text-zinc-300 font-medium">Nama</label>
+                        <input id="f-nama" name="name" class="field mt-1" autocomplete="name" placeholder="Nama penerima" maxlength="60">
+                        <p id="e-f-nama" class="text-xs text-red-400 mt-1 hidden"></p>
+                    </div>
+                    <div>
+                        <label for="f-wa" class="text-sm text-zinc-300 font-medium">Nomor WhatsApp</label>
+                        <input id="f-wa" name="tel" type="tel" inputmode="numeric" class="field mt-1" autocomplete="tel" placeholder="08123456789" maxlength="20">
+                        <p id="e-f-wa" class="text-xs text-red-400 mt-1 hidden"></p>
+                    </div>
+                    <div id="wrap-alamat">
+                        <label for="f-alamat" class="text-sm text-zinc-300 font-medium">Alamat antar</label>
+                        <textarea id="f-alamat" name="address" rows="3" class="field mt-1" autocomplete="street-address" placeholder="Jalan, nomor rumah, patokan" maxlength="300"></textarea>
+                        <p id="e-f-alamat" class="text-xs text-red-400 mt-1 hidden"></p>
+                    </div>
+                    <div>
+                        <label for="f-catatan" class="text-sm text-zinc-300 font-medium">Catatan <span class="text-zinc-500 font-normal">(opsional)</span></label>
+                        <input id="f-catatan" class="field mt-1" placeholder="Contoh: tidak pedas, es dipisah" maxlength="200">
+                    </div>
+
+                    <div class="py-3 space-y-1.5 text-sm border-y border-zinc-800">
+                        <div class="flex justify-between text-zinc-400"><span>Subtotal</span><span id="co-sub">Rp 0</span></div>
+                        <div class="flex justify-between text-zinc-400"><span id="co-ong-label">Ongkir</span><span id="co-ong">-</span></div>
+                        <div class="flex justify-between text-base font-bold pt-1"><span>Total</span><span id="co-total" class="text-amber-400">Rp 0</span></div>
+                    </div>
+
+                    <button id="btn-kirim" type="submit" class="btn-gold w-full !min-h-[52px] text-base">Pesan Sekarang</button>
+                    <p class="text-xs text-zinc-500 text-center">Bayar langsung ke driver saat pesanan tiba (tunai / QRIS / DANA).</p>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Sheet: Sukses -->
+    <div id="sheet-success" class="sheet" role="dialog" aria-modal="true" aria-label="Pesanan berhasil">
+        <div class="sheet-backdrop" data-close></div>
+        <div class="sheet-panel">
+            <div class="mx-auto mt-2.5 mb-3 h-1.5 w-10 rounded-full bg-zinc-700"></div>
+            <div class="sheet-body text-center" id="success-body"></div>
+        </div>
+    </div>
+
+    <!-- Sheet: Lacak -->
+    <div id="sheet-track" class="sheet" role="dialog" aria-modal="true" aria-label="Lacak pesanan">
+        <div class="sheet-backdrop" data-close></div>
+        <div class="sheet-panel">
+            <div class="mx-auto mt-2.5 mb-1 h-1.5 w-10 rounded-full bg-zinc-700"></div>
+            <div class="flex items-center justify-between px-4 py-2">
+                <h3 class="text-lg font-bold text-amber-400">Lacak Pesanan</h3>
+                <button data-close class="w-11 h-11 text-xl text-zinc-400" aria-label="Tutup">✕</button>
+            </div>
+            <div class="sheet-body">
+                <div id="recent" class="flex gap-2 overflow-x-auto no-scrollbar pb-2"></div>
+                <form id="form-track" class="space-y-3" novalidate>
+                    <div>
+                        <label for="t-id" class="text-sm text-zinc-300 font-medium">ID Pesanan</label>
+                        <input id="t-id" class="field mt-1 uppercase" placeholder="JF261016-0001" autocomplete="off" autocapitalize="characters" maxlength="30">
+                    </div>
+                    <div>
+                        <label for="t-wa" class="text-sm text-zinc-300 font-medium">Nomor WhatsApp saat memesan</label>
+                        <input id="t-wa" type="tel" inputmode="numeric" class="field mt-1" placeholder="08123456789" maxlength="20">
+                    </div>
+                    <button id="btn-lacak" type="submit" class="btn-gold w-full !min-h-[50px]">Cek Status</button>
+                </form>
+                <div id="track-result" class="pt-5"></div>
+            </div>
+        </div>
+    </div>
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+    <script>
+        // ====== KONFIGURASI ======
+        const GAS_URL = "https://script.google.com/macros/s/AKfycbxCxDH8k8H13khBl6pfLe6YULegeO8T_gZgXKFGnNEOZx-4BcckjBIEdc6UOLQLwCRBSA/exec";
+        const MAKS_QTY = 20;
+        const ALUR_DEFAULT = {
+            antar: ['Baru', 'Diproses', 'Dibelikan', 'Diantar', 'Selesai'],
+            pickup: ['Baru', 'Diproses', 'Siap Diambil', 'Selesai']
+        };
+        const TEKS_LANGKAH = {
+            'Baru': 'Pesanan diterima',
+            'Diproses': 'Driver menerima pesanan',
+            'Dibelikan': 'Makanan dibelikan',
+            'Diantar': 'Dalam perjalanan',
+            'Siap Diambil': 'Siap diambil di toko',
+            'Selesai': 'Selesai'
+        };
+        const DEFAULT_CONFIG = {
+            namaToko: 'JastipFood', alamatToko: '', tokoMaps: '', adminWa: '',
+            gpsAktif: false, kmMaks: 15, antarAktif: true, pickupAktif: true,
+            zona: [], alur: ALUR_DEFAULT, jadwal: [0, 15, 30, 45, 60]
+        };
+
+        // ====== UTIL ======
+        const $ = (s) => document.querySelector(s);
+        const rupiah = (n) => 'Rp ' + Number(n || 0).toLocaleString('id-ID');
+        const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+        const uid = () => (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2)).replace(/[^\w-]/g, '');
+        const store = {
+            get(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch (e) { return d; } },
+            set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* abaikan */ } }
+        };
+        function normWA(v) {
+            let d = String(v || '').replace(/\D/g, '');
+            if (d.startsWith('0')) d = '62' + d.slice(1);
+            else if (d.startsWith('8')) d = '62' + d;
+            return /^628\d{7,12}$/.test(d) ? d : '';
+        }
+        function emoji(kat) {
+            const k = String(kat || '').toLowerCase();
+            if (k.includes('minum')) return '🥤';
+            if (k.includes('snack') || k.includes('cemil')) return '🍟';
+            if (k.includes('dessert') || k.includes('kue') || k.includes('manis')) return '🍰';
+            if (k.includes('makan')) return '🍛';
+            return '🍽️';
+        }
+        const mapsLink = (lat, lng) => `https://www.google.com/maps?q=${Number(lat).toFixed(6)},${Number(lng).toFixed(6)}`;
+
+        let toastTimer;
+        function toast(msg, err) {
+            const t = $('#toast');
+            t.textContent = msg;
+            t.className = 'toast show' + (err ? ' err' : '');
+            clearTimeout(toastTimer);
+            toastTimer = setTimeout(() => { t.className = 'toast' + (err ? ' err' : ''); }, 3400);
+        }
+
+        // ====== API ======
+        async function request(url, options = {}, timeout = 20000) {
+            const ctrl = new AbortController();
+            const t = setTimeout(() => ctrl.abort(), timeout);
+            try {
+                const res = await fetch(url, { ...options, signal: ctrl.signal });
+                if (!res.ok) throw new Error('HTTP ' + res.status);
+                return await res.json();
+            } finally { clearTimeout(t); }
+        }
+        const apiGet = (params) => request(GAS_URL + '?' + new URLSearchParams(params));
+        // text/plain = "simple request": tidak memicu preflight CORS, dan respons tetap bisa dibaca
+        const apiPost = (body) => request(GAS_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+            body: JSON.stringify(body)
+        });
+
+        // ====== STATE ======
+        const state = {
+            menu: [], byId: new Map(),
+            config: Object.assign({}, DEFAULT_CONFIG),
+            cart: store.get('jf_cart', {}),
+            kategori: 'Semua', cari: '', kunci: null, sending: false,
+            metode: store.get('jf_metode', 'antar'),
+            lok: null,      // {lat, lng} dari GPS
+            quote: null     // {zona, ongkir, jarak, manual}
+        };
+
+        const cartItems = () => Object.entries(state.cart)
+            .map(([id, q]) => ({ m: state.byId.get(id), q }))
+            .filter((x) => x.m && x.m.tersedia);
+        const subtotal = () => cartItems().reduce((s, x) => s + x.m.harga * x.q, 0);
+        const jumlah = () => cartItems().reduce((s, x) => s + x.q, 0);
+        const alurDari = (metode) => ((state.config.alur || {})[metode]) || ALUR_DEFAULT[metode] || ALUR_DEFAULT.antar;
+
+        // ====== MENU ======
+        function skeleton() {
+            $('#menu-list').innerHTML = Array.from({ length: 4 }, () =>
+                '<div class="skeleton rounded-2xl h-36"></div>').join('');
+        }
+
+        function applyMenu(res) {
+            state.menu = res.menu || [];
+            state.byId = new Map(state.menu.map((m) => [m.id, m]));
+            state.config = Object.assign({}, DEFAULT_CONFIG, res.config || {});
+            // bersihkan keranjang dari menu yang sudah hilang/habis
+            Object.keys(state.cart).forEach((id) => {
+                const m = state.byId.get(id);
+                if (!m || !m.tersedia) delete state.cart[id];
+                else state.cart[id] = Math.min(state.cart[id], MAKS_QTY);
+            });
+            store.set('jf_cart', state.cart);
+            renderChips();
+            renderMenu();
+            updateBar();
+            setupCheckoutOptions();
+        }
+
+        function renderChips() {
+            const kats = ['Semua', ...new Set(state.menu.map((m) => m.kategori))];
+            if (!kats.includes(state.kategori)) state.kategori = 'Semua';
+            const box = $('#chips');
+            box.style.display = kats.length > 2 ? 'flex' : 'none';
+            box.innerHTML = kats.map((k) =>
+                `<button class="chip ${k === state.kategori ? 'active' : ''}" data-act="kat" data-kat="${esc(k)}">${esc(k)}</button>`).join('');
+        }
+
+        function ctlHTML(m) {
+            if (!m.tersedia) return '<span class="block text-center text-sm font-semibold text-zinc-500 border border-zinc-700 rounded-xl py-2.5">Habis</span>';
+            const q = state.cart[m.id] || 0;
+            if (q > 0) {
+                return `<div class="stepper full"><button data-act="dec" data-id="${esc(m.id)}" aria-label="Kurangi">−</button><span>${q}</span><button data-act="inc" data-id="${esc(m.id)}" aria-label="Tambah">+</button></div>`;
+            }
+            return `<button data-act="add" data-id="${esc(m.id)}" class="btn-gold w-full">+ Tambah</button>`;
+        }
+
+        function cardHTML(m) {
+            const foto = m.foto
+                ? `<img src="${esc(m.foto)}" alt="${esc(m.nama)}" loading="lazy" decoding="async" referrerpolicy="no-referrer" data-foto data-emoji="${emoji(m.kategori)}" class="w-full h-full object-cover">`
+                : `<div class="ph">${emoji(m.kategori)}</div>`;
+            return `<article class="bg-zinc-900 border border-zinc-800 p-3 rounded-2xl shadow-lg flex gap-3 ${m.tersedia ? '' : 'opacity-70'}">
+                <div class="min-w-0 flex-1 flex flex-col">
+                    <div class="flex items-start gap-2 flex-wrap">
+                        <h3 class="font-bold text-base text-amber-100 leading-snug">${esc(m.nama)}</h3>
+                        ${m.badge ? `<span class="text-[11px] bg-amber-500/10 text-amber-400 border border-amber-500/30 px-2 py-0.5 rounded">${esc(m.badge)}</span>` : ''}
+                    </div>
+                    ${m.deskripsi ? `<p class="text-zinc-400 text-[13px] mt-1 leading-relaxed line-clamp-3">${esc(m.deskripsi)}</p>` : ''}
+                    <p class="text-amber-400 font-bold text-lg mt-auto pt-2">${rupiah(m.harga)}</p>
+                </div>
+                <div class="shrink-0 w-[7.5rem]">
+                    <div class="relative w-full h-24 rounded-xl overflow-hidden bg-zinc-800">
+                        ${foto}
+                        ${m.tersedia ? '' : '<span class="absolute inset-0 grid place-items-center bg-black/60 text-xs font-bold tracking-widest">HABIS</span>'}
+                    </div>
+                    <div data-ctl="${esc(m.id)}" class="mt-2">${ctlHTML(m)}</div>
+                </div>
+            </article>`;
+        }
+
+        function renderMenu() {
+            const q = state.cari.trim().toLowerCase();
+            const list = state.menu.filter((m) =>
+                (state.kategori === 'Semua' || m.kategori === state.kategori) &&
+                (!q || m.nama.toLowerCase().includes(q) || m.deskripsi.toLowerCase().includes(q)));
+            $('#menu-list').innerHTML = list.length
+                ? list.map(cardHTML).join('')
+                : `<p class="col-span-full text-center text-zinc-500 py-12">${state.menu.length ? 'Menu tidak ditemukan.' : 'Belum ada menu.'}</p>`;
+        }
+
+        function showMenuError() {
+            $('#menu-list').innerHTML = `<div class="col-span-full text-center py-12 space-y-4">
+                <p class="text-zinc-400">Menu gagal dimuat. Periksa koneksi internet.</p>
+                <button data-act="retry" class="btn-gold">Coba lagi</button></div>`;
+        }
+
+        // Foto gagal dimuat -> ganti dengan placeholder (event error tidak bubble, jadi pakai capture)
+        document.addEventListener('error', (e) => {
+            const t = e.target;
+            if (t && t.tagName === 'IMG' && t.hasAttribute('data-foto')) {
+                const ph = document.createElement('div');
+                ph.className = 'ph';
+                ph.textContent = t.dataset.emoji || '🍽️';
+                t.replaceWith(ph);
+            }
+        }, true);
+
+        // ====== KERANJANG ======
+        function ubahQty(id, d) {
+            const m = state.byId.get(id);
+            if (!m || !m.tersedia) return;
+            let q = (state.cart[id] || 0) + d;
+            if (q > MAKS_QTY) { toast('Maksimal ' + MAKS_QTY + ' porsi per menu'); q = MAKS_QTY; }
+            if (q <= 0) delete state.cart[id]; else state.cart[id] = q;
+            state.kunci = null;
+            store.set('jf_cart', state.cart);
+            const c = document.querySelector(`[data-ctl="${CSS.escape(id)}"]`);
+            if (c) c.innerHTML = ctlHTML(m);
+            updateBar();
+            if (isOpen('checkout')) renderCheckout();
+            if (navigator.vibrate) navigator.vibrate(8);
+        }
+
+        function updateBar() {
+            const n = jumlah();
+            $('#cartbar').classList.toggle('show', n > 0);
+            $('#bar-count').textContent = n + ' item';
+            $('#bar-total').textContent = rupiah(subtotal());
+        }
+
+        function renderCheckout() {
+            const items = cartItems();
+            if (!items.length) { closeSheet('checkout'); return; }
+            $('#co-items').innerHTML = items.map(({ m, q }) => `
+                <div class="flex items-center justify-between gap-3 py-3 border-b border-zinc-800">
+                    <div class="min-w-0">
+                        <p class="font-semibold text-sm truncate">${esc(m.nama)}</p>
+                        <p class="text-xs text-zinc-400">${rupiah(m.harga)} × ${q} = <span class="text-amber-400">${rupiah(m.harga * q)}</span></p>
+                    </div>
+                    <div class="stepper shrink-0">
+                        <button data-act="dec" data-id="${esc(m.id)}" aria-label="Kurangi">−</button><span>${q}</span><button data-act="inc" data-id="${esc(m.id)}" aria-label="Tambah">+</button>
+                    </div>
+                </div>`).join('');
+            renderSummary();
+        }
+
+        // ====== PILIHAN CHECKOUT: metode, lokasi/zona, jadwal ======
+        function setupCheckoutOptions() {
+            const c = state.config;
+            // zona
+            const sel = $('#f-zona');
+            const keep = sel.value;
+            sel.innerHTML = '<option value="">Pilih zona pengantaran…</option>' + (c.zona || []).map((z) =>
+                `<option value="${esc(z.nama)}">${esc(z.nama)} (sampai ${z.sampai} km) · ${rupiah(z.ongkir)}</option>`).join('');
+            sel.value = (c.zona || []).some((z) => z.nama === keep) ? keep : '';
+            // GPS hanya jika toko sudah punya koordinat
+            $('#btn-gps').parentElement.classList.toggle('hidden', !c.gpsAktif);
+            // jadwal pickup
+            $('#f-jadwal').innerHTML = (c.jadwal || [0]).map((m) =>
+                `<option value="${m}">${m === 0 ? 'Secepatnya' : m + ' menit lagi'}</option>`).join('');
+            // info toko
+            $('#info-toko').innerHTML = `<p class="font-semibold text-amber-200">🏪 ${esc(c.namaToko)}</p>
+                ${c.alamatToko ? `<p class="text-zinc-400 mt-1">${esc(c.alamatToko)}</p>` : ''}
+                ${c.tokoMaps ? `<a href="${esc(c.tokoMaps)}" target="_blank" rel="noopener" class="inline-block mt-2 text-amber-400 font-semibold underline">Buka di peta</a>` : ''}`;
+            // metode yang tersedia
+            const buka = [c.antarAktif && 'antar', c.pickupAktif && 'pickup'].filter(Boolean);
+            document.querySelectorAll('.seg-btn').forEach((b) => b.classList.toggle('hidden', !buka.includes(b.dataset.m)));
+            $('#seg').parentElement.classList.toggle('hidden', buka.length < 2);
+            if (!buka.includes(state.metode)) state.metode = buka[0] || 'antar';
+            setMetode(state.metode);
+        }
+
+        function setMetode(m) {
+            state.metode = m;
+            state.kunci = null;
+            store.set('jf_metode', m);
+            document.querySelectorAll('.seg-btn').forEach((b) => b.classList.toggle('active', b.dataset.m === m));
+            $('#sec-antar').classList.toggle('hidden', m !== 'antar');
+            $('#sec-pickup').classList.toggle('hidden', m !== 'pickup');
+            $('#wrap-alamat').classList.toggle('hidden', m !== 'antar');
+            renderSummary();
+        }
+
+        function tampilGps() {
+            const box = $('#gps-info');
+            if (state.lok && state.quote && !state.quote.manual) {
+                box.innerHTML = `✅ Lokasi terdeteksi · ${esc(state.quote.jarak)} km · ${esc(state.quote.zona)}<br>
+                    <a href="${mapsLink(state.lok.lat, state.lok.lng)}" target="_blank" rel="noopener" class="underline font-semibold">Cek titik di peta</a>`;
+                box.classList.remove('hidden');
+            } else {
+                box.classList.add('hidden');
+            }
+        }
+
+        function ambilLokasi() {
+            if (!navigator.geolocation) { toast('Browser tidak mendukung lokasi. Pilih zona manual.', true); return; }
+            const btn = $('#btn-gps');
+            const label = '📍 Gunakan lokasi saya';
+            btn.disabled = true; btn.textContent = 'Mencari lokasi…';
+            navigator.geolocation.getCurrentPosition(async (pos) => {
+                const lat = pos.coords.latitude, lng = pos.coords.longitude;
+                btn.textContent = 'Menghitung ongkir…';
+                try {
+                    const res = await apiGet({ aksi: 'ongkir', lat: lat.toFixed(6), lng: lng.toFixed(6) });
+                    if (!res.ok) throw Object.assign(new Error(res.pesan || 'Gagal menghitung ongkir.'), { server: true });
+                    state.kunci = null;
+                    state.lok = { lat, lng };
+                    state.quote = { zona: res.zona, ongkir: res.ongkir, jarak: res.jarak, manual: false };
+                    $('#f-zona').value = '';
+                    clearErr('f-zona');
+                } catch (err) {
+                    console.error(err);
+                    state.lok = null; state.quote = null;
+                    toast(err.server ? err.message : 'Koneksi bermasalah. Coba lagi.', true);
+                } finally {
+                    btn.disabled = false; btn.textContent = label;
+                    tampilGps(); renderSummary();
+                }
+            }, (err) => {
+                btn.disabled = false; btn.textContent = label;
+                toast(err.code === 1
+                    ? 'Izin lokasi ditolak. Aktifkan izin lokasi atau pilih zona manual.'
+                    : 'Lokasi tidak ditemukan. Coba lagi atau pilih zona manual.', true);
+            }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 });
+        }
+
+        function pilihZona() {
+            const nama = $('#f-zona').value;
+            const z = (state.config.zona || []).find((x) => x.nama === nama);
+            state.lok = null;
+            state.kunci = null;
+            state.quote = z ? { zona: z.nama, ongkir: z.ongkir, jarak: '', manual: true } : null;
+            clearErr('f-zona');
+            tampilGps(); renderSummary();
+        }
+
+        function renderSummary() {
+            const sub = subtotal();
+            let ong = 0, teks;
+            if (state.metode === 'pickup') {
+                $('#co-ong-label').textContent = 'Biaya antar';
+                teks = 'Gratis (ambil sendiri)';
+            } else {
+                $('#co-ong-label').textContent = state.quote && state.quote.jarak !== '' ? `Ongkir (${state.quote.jarak} km)` : 'Ongkir';
+                if (state.quote) { ong = state.quote.ongkir; teks = rupiah(ong); } else teks = 'Pilih lokasi / zona';
+            }
+            $('#co-sub').textContent = rupiah(sub);
+            $('#co-ong').textContent = teks;
+            $('#co-total').textContent = rupiah(sub + ong);
+        }
+
+        // ====== SHEET ======
+        const isOpen = (n) => $('#sheet-' + n).classList.contains('open');
+        function lockScroll() { document.body.style.overflow = document.querySelector('.sheet.open') ? 'hidden' : ''; }
+        function openSheet(n) { $('#sheet-' + n).classList.add('open'); lockScroll(); }
+        function closeSheet(n) {
+            $('#sheet-' + n).classList.remove('open');
+            if (n === 'track') stopAutoRefresh();
+            lockScroll();
+        }
+
+        function openCheckout() {
+            if (!cartItems().length) return;
+            const c = store.get('jf_cust', {});
+            if (!$('#f-nama').value) $('#f-nama').value = c.nama || '';
+            if (!$('#f-wa').value) $('#f-wa').value = c.wa || '';
+            if (!$('#f-alamat').value) $('#f-alamat').value = c.alamat || '';
+            renderCheckout();
+            openSheet('checkout');
+        }
+
+        // ====== KIRIM PESANAN ======
+        function fieldErr(id, msg) {
+            const el = $('#' + id), e = $('#e-' + id);
+            el.classList.add('invalid');
+            e.textContent = msg; e.classList.remove('hidden');
+            if (el.scrollIntoView) el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+            el.focus({ preventScroll: true });
+            return null;
+        }
+        function clearErr(id) {
+            const el = $('#' + id), e = $('#e-' + id);
+            el.classList.remove('invalid');
+            if (e) e.classList.add('hidden');
+        }
+
+        function validasi() {
+            ['f-zona', 'f-nama', 'f-wa', 'f-alamat'].forEach(clearErr);
+            const antar = state.metode === 'antar';
+            const nama = $('#f-nama').value.trim().replace(/\s+/g, ' ');
+            const wa = normWA($('#f-wa').value);
+            const alamat = $('#f-alamat').value.trim();
+            const catatan = $('#f-catatan').value.trim();
+            if (antar && !state.quote) return fieldErr('f-zona', 'Pilih lokasi (GPS) atau zona pengantaran dulu.');
+            if (nama.length < 2) return fieldErr('f-nama', 'Isi nama (minimal 2 huruf).');
+            if (!wa) return fieldErr('f-wa', 'Nomor WhatsApp tidak valid. Contoh: 08123456789');
+            if (antar && alamat.length < 5) return fieldErr('f-alamat', 'Alamat antar belum lengkap.');
+            return { nama, wa, alamat: antar ? alamat : '', catatan };
+        }
+
+        async function kirimPesanan(ev) {
+            ev.preventDefault();
+            if (state.sending) return;
+            const f = validasi();
+            if (!f) return;
+            const items = cartItems().map((x) => ({ id: x.m.id, qty: x.q }));
+            if (!items.length) { toast('Keranjang kosong', true); return; }
+
+            const body = { aksi: 'pesan', kunci: null, metode: state.metode, hp: $('#f-hp').value, ...f, items };
+            if (state.metode === 'antar') {
+                if (state.lok) { body.lat = state.lok.lat; body.lng = state.lok.lng; }
+                if (state.quote && state.quote.manual) body.zona = state.quote.zona;
+            } else {
+                body.jadwal = Number($('#f-jadwal').value) || 0;
+            }
+
+            const totalTampil = subtotal() + (state.metode === 'antar' && state.quote ? state.quote.ongkir : 0);
+            state.sending = true;
+            const btn = $('#btn-kirim');
+            btn.disabled = true; btn.textContent = 'Mengirim pesanan…';
+            // kunci tetap sama sampai sukses, sehingga kirim ulang tidak membuat pesanan ganda
+            if (!state.kunci) state.kunci = uid();
+            body.kunci = state.kunci;
+
+            try {
+                const res = await apiPost(body);
+                if (!res.ok) throw Object.assign(new Error(res.pesan || 'Pesanan ditolak server.'), { server: true });
+
+                store.set('jf_cust', { nama: f.nama, wa: f.wa, alamat: f.alamat || (store.get('jf_cust', {}).alamat || '') });
+                const riwayat = store.get('jf_orders', []).filter((o) => o.id !== res.id);
+                riwayat.unshift({ id: res.id, wa: f.wa });
+                store.set('jf_orders', riwayat.slice(0, 8));
+
+                state.cart = {}; store.set('jf_cart', state.cart);
+                state.kunci = null;
+                state.lok = null; state.quote = null;
+                $('#f-zona').value = ''; $('#f-catatan').value = '';
+                tampilGps();
+                renderMenu(); updateBar();
+                closeSheet('checkout');
+                showSuccess(res, f);
+                if (res.total !== totalTampil) toast('Harga diperbarui oleh server. Periksa total di ringkasan.', true);
+            } catch (err) {
+                console.error(err);
+                if (err.server) toast(err.message, true);
+                else toast('Koneksi bermasalah. Tekan "Pesan Sekarang" lagi, aman tidak akan terduplikasi.', true);
+            } finally {
+                state.sending = false;
+                btn.disabled = false; btn.textContent = 'Pesan Sekarang';
+            }
+        }
+
+        function showSuccess(res, f) {
+            const c = state.config;
+            const pickup = res.metode === 'pickup';
+            const wa = String(c.adminWa || '').replace(/\D/g, '');
+            const teks = [
+                `Halo ${c.namaToko}, saya sudah memesan.`,
+                `ID: ${res.id}`,
+                ...(res.ringkasan || []),
+                pickup ? `Ambil sendiri (${res.jadwal || 'Secepatnya'})` : `Antar (${res.zona}${res.jarak !== '' ? ', ' + res.jarak + ' km' : ''}) - Ongkir ${rupiah(res.ongkir)}`,
+                `Total: ${rupiah(res.total)}`,
+                pickup ? '' : `Alamat: ${f.alamat}`
+            ].filter(Boolean).join('\n');
+
+            const infoMetode = pickup
+                ? `<div class="text-left text-sm bg-emerald-500/10 border border-emerald-500/30 rounded-xl p-3 mb-3">
+                       <p class="font-semibold text-emerald-300">🏪 Ambil di ${esc(c.namaToko)}</p>
+                       ${c.alamatToko ? `<p class="text-zinc-300 mt-1">${esc(c.alamatToko)}</p>` : ''}
+                       <p class="text-zinc-400 mt-1">Waktu ambil: ${esc(res.jadwal || 'Secepatnya')}</p>
+                       ${c.tokoMaps ? `<a href="${esc(c.tokoMaps)}" target="_blank" rel="noopener" class="inline-block mt-1 text-amber-400 font-semibold underline">Buka di peta</a>` : ''}
+                   </div>`
+                : `<div class="text-left text-sm bg-sky-500/10 border border-sky-500/30 rounded-xl p-3 mb-3">
+                       <p class="font-semibold text-sky-300">🛵 Diantar ke alamatmu</p>
+                       <p class="text-zinc-300 mt-1">${esc(f.alamat)}</p>
+                       <p class="text-zinc-400 mt-1">${esc(res.zona)}${res.jarak !== '' ? ' · ' + esc(res.jarak) + ' km' : ''}</p>
+                   </div>`;
+
+            $('#success-body').innerHTML = `
+                <div class="text-5xl mb-2">✅</div>
+                <h3 class="text-xl font-bold text-amber-400">Pesanan Diterima!</h3>
+                <p class="text-sm text-zinc-400 mt-1">Simpan ID pesananmu untuk melacak status. Bayar langsung ke driver saat pesanan tiba.</p>
+                <div class="my-4 bg-zinc-950 border border-amber-500/40 rounded-xl py-3">
+                    <p class="text-xs text-zinc-500">ID Pesanan</p>
+                    <p class="text-xl font-extrabold tracking-wider text-amber-300 select-all">${esc(res.id)}</p>
+                </div>
+                ${infoMetode}
+                <div class="text-left text-sm bg-zinc-950 rounded-xl p-3 space-y-1 mb-4">
+                    ${(res.ringkasan || []).map((l) => `<p>${esc(l)}</p>`).join('')}
+                    <p class="pt-2 mt-2 border-t border-zinc-800 flex justify-between text-zinc-400"><span>${pickup ? 'Biaya antar' : 'Ongkir'}</span><span>${pickup ? 'Gratis' : rupiah(res.ongkir)}</span></p>
+                    <p class="flex justify-between font-bold"><span>Total</span><span class="text-amber-400">${rupiah(res.total)}</span></p>
+                </div>
+                <div class="space-y-2.5">
+                    ${wa ? `<a href="https://wa.me/${wa}?text=${encodeURIComponent(teks)}" target="_blank" rel="noopener" class="btn-gold w-full !min-h-[52px]">Konfirmasi via WhatsApp</a>` : ''}
+                    <button data-act="track-from-success" data-id="${esc(res.id)}" data-wa="${esc(f.wa)}" class="btn-ghost w-full">Lacak Pesanan</button>
+                    <button data-close class="w-full min-h-[44px] text-zinc-400">Tutup</button>
+                </div>`;
+            openSheet('success');
+        }
+
+        // ====== LACAK ======
+        let trackTimer = null, trackCur = null;
+        function stopAutoRefresh() { clearInterval(trackTimer); trackTimer = null; }
+
+        function renderRecent() {
+            const r = store.get('jf_orders', []);
+            $('#recent').innerHTML = r.map((o) =>
+                `<button class="chip" data-act="recent" data-id="${esc(o.id)}" data-wa="${esc(o.wa)}">${esc(o.id)}</button>`).join('');
+        }
+
+        function openTrack(id, wa) {
+            const c = store.get('jf_cust', {});
+            const last = store.get('jf_orders', [])[0];
+            $('#t-id').value = id || (last && last.id) || '';
+            $('#t-wa').value = wa || (last && last.wa) || c.wa || '';
+            $('#track-result').innerHTML = '';
+            renderRecent();
+            openSheet('track');
+            if (id && wa) lacak(id, wa);
+        }
+
+        async function lacak(id, wa, diam) {
+            id = String(id || '').trim().toUpperCase();
+            if (!id || !normWA(wa)) { toast('Isi ID pesanan dan nomor WhatsApp lengkap yang dipakai saat memesan', true); return; }
+            const btn = $('#btn-lacak');
+            if (!diam) { btn.disabled = true; btn.textContent = 'Memeriksa…'; }
+            try {
+                const res = await apiPost({ aksi: 'status', id, wa });
+                if (!res.ok) throw Object.assign(new Error(res.pesan), { server: true });
+                trackCur = { id, wa };
+                renderStatus(res);
+                const selesai = res.status === 'Selesai' || res.status === 'Dibatalkan';
+                if (selesai) stopAutoRefresh();
+                else if (!trackTimer) trackTimer = setInterval(() => { if (trackCur && isOpen('track')) lacak(trackCur.id, trackCur.wa, true); }, 20000);
+            } catch (err) {
+                if (!diam) {
+                    stopAutoRefresh();
+                    $('#track-result').innerHTML = '';
+                    toast(err.server ? err.message : 'Koneksi bermasalah. Coba lagi.', true);
+                }
+            } finally {
+                if (!diam) { btn.disabled = false; btn.textContent = 'Cek Status'; }
+            }
+        }
+
+        function renderStatus(d) {
+            const pickup = d.metode === 'pickup';
+            const alur = alurDari(pickup ? 'pickup' : 'antar');
+            const batal = d.status === 'Dibatalkan';
+            const idx = alur.indexOf(d.status);
+            const timeline = batal
+                ? `<div class="bg-red-500/10 border border-red-500/40 text-red-300 rounded-xl p-3 text-center font-semibold">Pesanan dibatalkan</div>`
+                : idx < 0
+                    ? `<div class="bg-amber-500/10 border border-amber-500/40 text-amber-300 rounded-xl p-3 text-center font-semibold">${esc(d.status)}</div>`
+                    : `<ol>${alur.map((s, i) => `
+                        <li class="flex gap-3">
+                            <div class="flex flex-col items-center">
+                                <span class="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${i <= idx ? 'bg-amber-500 text-zinc-950' : 'bg-zinc-800 text-zinc-500'}">${i < idx ? '✓' : i + 1}</span>
+                                ${i < alur.length - 1 ? `<span class="w-0.5 h-6 ${i < idx ? 'bg-amber-500' : 'bg-zinc-800'}"></span>` : ''}
+                            </div>
+                            <p class="text-sm pt-0.5 ${i === idx ? 'text-amber-400 font-bold' : i < idx ? 'text-zinc-300' : 'text-zinc-600'}">${esc(TEKS_LANGKAH[s] || s)}</p>
+                        </li>`).join('')}</ol>`;
+            $('#track-result').innerHTML = `
+                <div class="bg-zinc-950 border border-zinc-800 rounded-xl p-4 space-y-4">
+                    <div class="flex justify-between items-center text-xs text-zinc-500">
+                        <span>${esc(d.id)}</span>
+                        <span class="px-2 py-0.5 rounded-full border ${pickup ? 'border-emerald-500/40 text-emerald-300' : 'border-sky-500/40 text-sky-300'}">${pickup ? '🏪 Ambil sendiri' : '🛵 Antar'}</span>
+                    </div>
+                    ${timeline}
+                    <div class="text-sm border-t border-zinc-800 pt-3">
+                        <p class="text-zinc-300">${esc(d.pesanan)}</p>
+                        ${d.driver ? `<p class="text-zinc-400 mt-1">Driver: ${esc(d.driver)}</p>` : ''}
+                        ${pickup && d.jadwal ? `<p class="text-zinc-400 mt-1">Waktu ambil: ${esc(d.jadwal)}</p>` : ''}
+                        <p class="mt-1 font-bold text-amber-400">${rupiah(d.total)}</p>
+                        <p class="mt-1 text-xs text-zinc-500">Dipesan ${esc(d.waktu)}</p>
+                    </div>
+                </div>`;
+        }
+
+        // ====== EVENT ======
+        document.addEventListener('click', (e) => {
+            const close = e.target.closest('[data-close]');
+            if (close) { const s = close.closest('.sheet'); if (s) closeSheet(s.id.replace('sheet-', '')); return; }
+            const el = e.target.closest('[data-act]');
+            if (!el) return;
+            const id = el.dataset.id;
+            switch (el.dataset.act) {
+                case 'add': case 'inc': ubahQty(id, 1); break;
+                case 'dec': ubahQty(id, -1); break;
+                case 'kat': state.kategori = el.dataset.kat; renderChips(); renderMenu(); break;
+                case 'svc': if (el.dataset.svc === 'ojek') toast('Layanan Ojek segera hadir 🏍️'); break;
+                case 'metode': setMetode(el.dataset.m); break;
+                case 'gps': ambilLokasi(); break;
+                case 'open-checkout': openCheckout(); break;
+                case 'open-track': openTrack(); break;
+                case 'recent': $('#t-id').value = id; $('#t-wa').value = el.dataset.wa; lacak(id, el.dataset.wa); break;
+                case 'track-from-success': closeSheet('success'); openTrack(id, el.dataset.wa); break;
+                case 'retry': init(); break;
+            }
+        });
+
+        $('#cari').addEventListener('input', (e) => { state.cari = e.target.value; renderMenu(); });
+        $('#form').addEventListener('submit', kirimPesanan);
+        $('#form-track').addEventListener('submit', (e) => { e.preventDefault(); lacak($('#t-id').value, $('#t-wa').value); });
+        $('#f-zona').addEventListener('change', pilihZona);
+        ['f-nama', 'f-wa', 'f-alamat'].forEach((id) => $('#' + id).addEventListener('input', () => { clearErr(id); state.kunci = null; }));
+        ['f-catatan', 'f-jadwal'].forEach((id) => $('#' + id).addEventListener('input', () => { state.kunci = null; }));
+        $('#f-jadwal').addEventListener('change', () => { state.kunci = null; });
+        document.addEventListener('keydown', (e) => {
+            if (e.key !== 'Escape') return;
+            ['success', 'track', 'checkout'].some((n) => { if (isOpen(n)) { closeSheet(n); return true; } return false; });
+        });
+        window.addEventListener('online', () => init());
+
+        // ====== MULAI ======
+        async function init() {
+            const cache = store.get('jf_menu2', null);
+            if (cache && !state.menu.length) applyMenu(cache); else if (!state.menu.length) skeleton();
+            try {
+                const res = await apiGet({ aksi: 'menu' });
+                if (!res.ok) throw new Error(res.pesan || 'Gagal memuat menu');
+                store.set('jf_menu2', res);
+                applyMenu(res);
+                $('#offline').classList.add('hidden');
+            } catch (err) {
+                console.error(err);
+                if (state.menu.length) $('#offline').classList.remove('hidden');
+                else showMenuError();
+            }
+        }
+        setMetode(state.metode);
+        init();
+    </script>
+</body>
+</html>
