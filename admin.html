@@ -206,7 +206,9 @@
     const pickup = o.metode === 'pickup';
     const wa = String(o.wa).replace(/\D/g, '');
     const next = nextStatus(o);
-    const opsi = (data.statusList || []).map((s) =>
+    const final = selesai(o.status);
+    const pilihan = ((data.alur || {})[o.metode] || []).concat(['Dibatalkan']);
+    const opsi = pilihan.map((s) =>
       `<option value="${esc(s)}" ${s === o.status ? 'selected' : ''}>${esc(s)}</option>`).join('');
     return `<article class="bg-zinc-900 border border-zinc-800 rounded-2xl p-4 space-y-3" data-card="${esc(o.id)}">
       <div class="flex items-start justify-between gap-2">
@@ -233,10 +235,10 @@
         <p class="text-zinc-200">${esc(o.pesanan)}</p>
         <p class="flex justify-between text-zinc-500 text-xs pt-1 border-t border-zinc-800"><span>Subtotal ${rupiah(o.subtotal)} + ongkir ${rupiah(o.ongkir)}</span><span class="font-bold text-amber-400 text-sm">${rupiah(o.total)}</span></p>
       </div>
-      <div class="flex gap-2 items-center">
+      ${final ? '<p class="text-xs text-zinc-500">Pesanan final, status terkunci.</p>' : `<div class="flex gap-2 items-center">
         ${next ? `<button class="btn-gold flex-1 text-sm" data-set="${esc(o.id)}" data-status="${esc(next)}">Lanjut: ${esc(next)}</button>` : ''}
         <select class="field !min-h-[44px] !py-2 ${next ? 'w-36' : 'flex-1'}" data-pilih="${esc(o.id)}" aria-label="Ubah status">${opsi}</select>
-      </div>
+      </div>`}
     </article>`;
   }
 
@@ -258,12 +260,13 @@
     try {
       await api({ aksi: 'admin_status', token, id, status });
       const o = data.pesanan.find((x) => x.id === id);
-      if (o) o.status = status;
+      if (o) { o.status = status; if (status === 'Baru') { o.driver = ''; o.driverId = ''; } }
       render();
       toast(id + ' → ' + status);
     } catch (e) {
       toast(e.server ? e.message : 'Koneksi bermasalah. Coba lagi.', true);
       render();
+      muat(true);
     }
   }
 
@@ -290,13 +293,14 @@
         <input id="d-nama" class="field" placeholder="Nama driver" maxlength="60">
         <input id="d-wa" class="field" type="tel" inputmode="numeric" placeholder="WhatsApp (08…)" maxlength="20">
         <input id="d-dana" class="field" type="tel" inputmode="numeric" placeholder="Nomor DANA" maxlength="20">
+        <input id="d-tg" class="field" type="tel" inputmode="numeric" placeholder="ID Telegram (opsional, untuk notifikasi)" maxlength="20">
         <input id="d-pin" class="field" type="password" autocomplete="new-password" placeholder="PIN login (min. 6; kosongkan jika tidak diubah)" maxlength="64">
         <button class="btn-gold sm:col-span-2" type="submit">Simpan driver</button>
       </form>` + (drivers.length ? drivers.map((d) => `
       <article class="bg-zinc-900 border border-zinc-800 rounded-2xl p-4 space-y-2 ${d.aktif ? '' : 'opacity-60'}">
         <div class="flex justify-between items-start gap-2">
           <div><p class="font-bold">${esc(d.nama)} <span class="text-xs text-zinc-500">${esc(d.id)}</span></p>
-          <p class="text-xs text-zinc-400">WA ${esc(d.wa)} · DANA ${esc(d.dana)}</p></div>
+          <p class="text-xs text-zinc-400">WA ${esc(d.wa)} · DANA ${esc(d.dana)} · ${d.tg ? '🔔 Telegram aktif' : 'tanpa notifikasi'}</p></div>
           <span class="text-xs px-2 py-0.5 rounded-full border ${d.aktif ? 'border-emerald-500/50 text-emerald-300' : 'border-zinc-600 text-zinc-400'}">${d.aktif ? 'Aktif' : 'Nonaktif'}</span>
         </div>
         <p class="text-sm">Saldo deposit: <b class="${d.saldo < 1000 ? 'text-red-400' : 'text-amber-400'}">${rupiah(d.saldo)}</b></p>
@@ -314,7 +318,7 @@
   document.addEventListener('submit', (e) => {
     if (e.target.id !== 'form-driver') return;
     e.preventDefault();
-    simpanDriver({ id: $('#d-id').value, nama: $('#d-nama').value, wa: $('#d-wa').value, dana: $('#d-dana').value, pin: $('#d-pin').value, aktif: true });
+    simpanDriver({ id: $('#d-id').value, nama: $('#d-nama').value, wa: $('#d-wa').value, dana: $('#d-dana').value, tg: $('#d-tg').value, pin: $('#d-pin').value, aktif: true });
   });
   document.addEventListener('click', async (e) => {
     const s = e.target.closest('[data-dsaldo]'), ed = e.target.closest('[data-dedit]'), tg = e.target.closest('[data-dtoggle]');
@@ -325,11 +329,11 @@
       catch (err) { toast(err.server ? err.message : 'Koneksi bermasalah.', true); }
     } else if (ed) {
       const d = drivers.find((x) => x.id === ed.dataset.dedit); if (!d) return;
-      $('#d-id').value = d.id; $('#d-nama').value = d.nama; $('#d-wa').value = d.wa; $('#d-dana').value = d.dana; $('#d-pin').value = '';
+      $('#d-id').value = d.id; $('#d-nama').value = d.nama; $('#d-wa').value = d.wa; $('#d-dana').value = d.dana; $('#d-tg').value = d.tg || ''; $('#d-pin').value = '';
       $('#d-nama').scrollIntoView({ block: 'center', behavior: 'smooth' });
     } else if (tg) {
       const d = drivers.find((x) => x.id === tg.dataset.dtoggle); if (!d) return;
-      simpanDriver({ id: d.id, nama: d.nama, wa: d.wa, dana: d.dana, pin: '', aktif: !d.aktif });
+      simpanDriver({ id: d.id, nama: d.nama, wa: d.wa, dana: d.dana, tg: d.tg || '', pin: '', aktif: !d.aktif });
     }
   });
 
