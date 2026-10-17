@@ -72,6 +72,18 @@
     set(v) { try { v ? sessionStorage.setItem('jf_admin', v) : sessionStorage.removeItem('jf_admin'); } catch (e) { /* abaikan */ } }
   };
 
+  // ID perangkat acak (disimpan di browser) agar kunci percobaan login berlaku per perangkat
+  const devId = (() => {
+    try {
+      let v = localStorage.getItem('jf_dev');
+      if (!v) {
+        v = (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2)).replace(/[^\w-]/g, '');
+        localStorage.setItem('jf_dev', v);
+      }
+      return v;
+    } catch (e) { return ''; }
+  })();
+
   let token = ss.get();
   let data = { pesanan: [], alur: {}, statusList: [] };
   let filter = 'Aktif';
@@ -133,7 +145,7 @@
     const btn = $('#btn-login');
     btn.disabled = true; btn.textContent = 'Memeriksa…';
     try {
-      const res = await api({ aksi: 'admin_login', pin });
+      const res = await api({ aksi: 'admin_login', pin, dev: devId });
       token = res.token; ss.set(token);
       showApp();
       await muat();
