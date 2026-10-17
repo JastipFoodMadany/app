@@ -66,7 +66,7 @@
 
 <script>
   const GAS_URL = "https://script.google.com/macros/s/AKfycbxCxDH8k8H13khBl6pfLe6YULegeO8T_gZgXKFGnNEOZx-4BcckjBIEdc6UOLQLwCRBSA/exec";
-  const REFRESH_MS = 15000;
+  const REFRESH_MS = 30000, MAKS_DELAY = 120000;
   const LANGKAH = { 'Diproses': 'Sudah beli', 'Dibelikan': 'Mulai antar', 'Diantar': 'Selesai ✓' };
   const $ = (s) => document.querySelector(s);
   const rupiah = (n) => 'Rp ' + Number(n || 0).toLocaleString('id-ID');
@@ -77,6 +77,7 @@
   };
 
   let token = ls.get(), data = null, tab = 'baru', timer = null, busy = false, baruIds = null;
+  let ver = '', tick = 0, delay = REFRESH_MS;
 
   let toastTimer;
   function toast(msg, err) {
@@ -100,7 +101,7 @@
   function showLogin() { $('#app').classList.add('hidden'); $('#login').classList.remove('hidden'); stopTimer(); }
   function showApp() { $('#login').classList.add('hidden'); $('#app').classList.remove('hidden'); }
   function logout(expired) {
-    token = ''; ls.set(''); data = null; baruIds = null; showLogin();
+    token = ''; ls.set(''); data = null; baruIds = null; ver = ''; showLogin();
     const e = $('#login-err');
     if (expired) { e.textContent = 'Sesi berakhir. Silakan masuk lagi.'; e.classList.remove('hidden'); } else e.classList.add('hidden');
   }
@@ -123,7 +124,13 @@
     if (busy || !token) return;
     busy = true;
     try {
-      data = await api({ aksi: 'driver_list', token });
+      // Polling otomatis menyertakan versi terakhir: bila tidak ada perubahan, server membalas singkat.
+      // Setiap 5x polling dan setiap muat manual dipaksa penuh (menangkap perubahan manual di Sheet).
+      const penuh = !diam || !data || (++tick % 5 === 0);
+      const r = await api({ aksi: 'driver_list', token, ver: penuh ? '' : ver });
+      delay = REFRESH_MS;
+      if (r.sama) return;
+      data = r; ver = r.ver || '';
       const ids = new Set(data.baru.map((o) => o.id));
       if (baruIds && [...ids].some((i) => !baruIds.has(i))) {
         toast('🛵 Ada pesanan baru!');
@@ -131,12 +138,23 @@
       }
       baruIds = ids;
       render();
-    } catch (e) { if (!diam) toast(pesanErr(e), true); }
+    } catch (e) {
+      delay = Math.min(delay * 2, MAKS_DELAY); // koneksi/server bermasalah: perlambat sementara
+      if (!diam) toast(pesanErr(e), true);
+    }
     finally { busy = false; }
   }
-  function startTimer() { stopTimer(); timer = setInterval(() => { if (!document.hidden) muat(true); }, REFRESH_MS); }
-  function stopTimer() { clearInterval(timer); timer = null; }
-  document.addEventListener('visibilitychange', () => { if (!document.hidden && token) muat(true); });
+  function startTimer() {
+    stopTimer();
+    const loop = async () => {
+      if (!token) return;
+      if (!document.hidden) await muat(true);
+      if (token) timer = setTimeout(loop, delay);
+    };
+    timer = setTimeout(loop, delay);
+  }
+  function stopTimer() { clearTimeout(timer); timer = null; }
+  document.addEventListener('visibilitychange', () => { if (!document.hidden && token) { ver = ''; muat(true); } });
   $('#btn-refresh').addEventListener('click', () => muat());
 
   /* ---------- Tampilan ---------- */
@@ -175,8 +193,9 @@
       <div class="flex gap-2">
         ${next ? `<button class="btn-gold flex-1" data-set="${esc(o.id)}" data-status="${esc(next)}">${esc(LANGKAH[o.status] || next)}</button>` : ''}
         ${o.status === 'Diproses' ? `<button class="btn-ghost" data-lepas="${esc(o.id)}">Lepas</button>` : ''}
-        <button class="btn-ghost text-red-300" data-set="${esc(o.id)}" data-status="Dibatalkan">Batal</button>
-      </div>` : (o.komisi ? `<p class="text-xs text-zinc-500">Komisi dipotong ${rupiah(o.komisi)}</p>` : '')}
+        ${o.status !== 'Diantar' ? `<button class="btn-ghost text-red-300" data-set="${esc(o.id)}" data-status="Dibatalkan">Batal</button>` : ''}
+      </div>
+      ${o.status === 'Diantar' ? '<p class="text-xs text-zinc-500">Pesanan sedang diantar. Untuk membatalkan, hubungi admin.</p>' : ''}` : (o.komisi ? `<p class="text-xs text-zinc-500">Komisi dipotong ${rupiah(o.komisi)}</p>` : '')}
     </article>`;
   }
 
@@ -213,7 +232,7 @@
     const s = e.target.closest('[data-set]');
     if (s) {
       const st = s.dataset.status;
-      if (st === 'Dibatalkan' && !confirm('Batalkan pesanan ' + s.dataset.set + '? Komisi tidak dipotong.')) return;
+      if (st === 'Dibatalkan' && !confirm('Batalkan pesanan ' + s.dataset.set + '? Komisi tidak dipotong dan admin akan diberi tahu.')) return;
       if (st === 'Selesai' && !confirm('Pesanan sudah diterima pelanggan dan dibayar? Komisi akan dipotong.')) return;
       aksi({ aksi: 'driver_status', id: s.dataset.set, status: st }, st === 'Selesai' ? 'Pesanan selesai' : 'Status: ' + st, s);
       return;
