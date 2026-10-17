@@ -76,6 +76,18 @@
     set(v) { try { v ? localStorage.setItem('jf_drv', v) : localStorage.removeItem('jf_drv'); } catch (e) { /* abaikan */ } }
   };
 
+  // ID perangkat acak (disimpan di browser) agar kunci percobaan login berlaku per perangkat
+  const devId = (() => {
+    try {
+      let v = localStorage.getItem('jf_dev');
+      if (!v) {
+        v = (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2)).replace(/[^\w-]/g, '');
+        localStorage.setItem('jf_dev', v);
+      }
+      return v;
+    } catch (e) { return ''; }
+  })();
+
   let token = ls.get(), data = null, tab = 'baru', timer = null, busy = false, baruIds = null;
   let ver = '', tick = 0, delay = REFRESH_MS;
 
@@ -112,7 +124,7 @@
     if (!$('#wa').value || !$('#pin').value) { err.textContent = 'Isi nomor WhatsApp dan PIN.'; err.classList.remove('hidden'); return; }
     btn.disabled = true; btn.textContent = 'Memeriksa…';
     try {
-      const r = await api({ aksi: 'driver_login', wa: $('#wa').value, pin: $('#pin').value });
+      const r = await api({ aksi: 'driver_login', wa: $('#wa').value, pin: $('#pin').value, dev: devId });
       token = r.token; ls.set(token); showApp(); await muat(); startTimer();
     } catch (e) { err.textContent = pesanErr(e); err.classList.remove('hidden'); }
     finally { btn.disabled = false; btn.textContent = 'Masuk'; $('#pin').value = ''; }
