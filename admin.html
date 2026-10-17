@@ -89,6 +89,8 @@
   let filter = 'Aktif';
   let timer = null, busy = false;
   let drivers = [];
+  let tokoList = [];
+  const khusus = (f) => f === 'Driver' || f === 'Toko';   // tab yang bukan daftar pesanan
 
   let toastTimer;
   function toast(msg, err) {
@@ -170,7 +172,7 @@
       const res = await api({ aksi: 'admin_list', token });
       data = res;
       $('#updated').textContent = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
-      if (filter !== 'Driver') render(); else renderChips();
+      if (!khusus(filter)) render(); else renderChips();
     } catch (e) {
       if (!diam && e.server !== true) toast('Koneksi bermasalah. Coba lagi.', true);
       else if (!diam && token) toast(e.message, true);
@@ -208,7 +210,8 @@
       ['Selesai', L.filter((o) => o.status === 'Selesai').length],
       ['Dibatalkan', L.filter((o) => o.status === 'Dibatalkan').length],
       ['Semua', L.length],
-      ['Driver', drivers.length]
+      ['Driver', drivers.length],
+      ['Toko', tokoList.length]
     ];
     $('#chips').innerHTML = tabs.map(([k, n]) =>
       `<button class="chip ${k === filter ? 'active' : ''}" data-filter="${k}">${k} (${n})</button>`).join('');
@@ -244,8 +247,8 @@
         ${o.catatan ? `<p class="text-xs text-amber-200/80">📝 ${esc(o.catatan)}</p>` : ''}
       </div>
       <div class="bg-zinc-950 rounded-xl p-3 text-sm space-y-1">
-        <p class="text-zinc-200">${esc(o.pesanan)}</p>
-        <p class="flex justify-between text-zinc-500 text-xs pt-1 border-t border-zinc-800"><span>Subtotal ${rupiah(o.subtotal)} + ongkir ${rupiah(o.ongkir)}</span><span class="font-bold text-amber-400 text-sm">${rupiah(o.total)}</span></p>
+        <p class="text-zinc-200 whitespace-pre-line">${esc(o.pesanan)}</p>
+        <p class="flex justify-between text-zinc-500 text-xs pt-1 border-t border-zinc-800"><span>Subtotal ${rupiah(o.subtotal)} + ongkir ${rupiah(o.ongkir)}${o.biayaToko ? ' (termasuk tambahan toko ' + rupiah(o.biayaToko) + ')' : ''}</span><span class="font-bold text-amber-400 text-sm">${rupiah(o.total)}</span></p>
       </div>
       ${final ? '<p class="text-xs text-zinc-500">Pesanan final, status terkunci.</p>' : `<div class="flex gap-2 items-center">
         ${next ? `<button class="btn-gold flex-1 text-sm" data-set="${esc(o.id)}" data-status="${esc(next)}">Lanjut: ${esc(next)}</button>` : ''}
@@ -257,6 +260,7 @@
   function render() {
     renderChips();
     if (filter === 'Driver') { renderDrivers(); return; }
+    if (filter === 'Toko') { renderToko(); return; }
     const baru = data.pesanan.filter((o) => o.status === 'Baru').length;
     document.title = (baru ? `(${baru}) ` : '') + 'Admin - JastipFood';
     const L = data.pesanan.filter((o) =>
@@ -284,7 +288,7 @@
 
   document.addEventListener('click', (e) => {
     const f = e.target.closest('[data-filter]');
-    if (f) { filter = f.dataset.filter; render(); if (filter === 'Driver') muatDriver(); return; }
+    if (f) { filter = f.dataset.filter; render(); if (filter === 'Driver') muatDriver(); if (filter === 'Toko') muatToko(); return; }
     const b = e.target.closest('[data-set]');
     if (b) ubahStatus(b.dataset.set, b.dataset.status, b);
   });
@@ -346,6 +350,63 @@
     } else if (tg) {
       const d = drivers.find((x) => x.id === tg.dataset.dtoggle); if (!d) return;
       simpanDriver({ id: d.id, nama: d.nama, wa: d.wa, dana: d.dana, tg: d.tg || '', pin: '', aktif: !d.aktif });
+    }
+  });
+
+  /* ---------- Toko ---------- */
+  async function muatToko() {
+    try { const r = await api({ aksi: 'admin_toko_list', token }); tokoList = r.toko; render(); }
+    catch (e) { toast(e.server ? e.message : 'Koneksi bermasalah.', true); }
+  }
+  function renderToko() {
+    $('#list').innerHTML = `
+      <p class="col-span-full text-xs text-zinc-400">Isi kolom <b>Toko</b> di sheet Menu dengan ID toko (T001, T002, …) agar menu masuk ke toko yang benar. Satu pesanan boleh memuat beberapa toko.</p>
+      <form id="form-toko" class="col-span-full bg-zinc-900 border border-zinc-800 rounded-2xl p-4 grid grid-cols-1 sm:grid-cols-2 gap-3" novalidate>
+        <input type="hidden" id="tk-id">
+        <input id="tk-nama" class="field" placeholder="Nama toko / tempat makan" maxlength="60">
+        <input id="tk-alamat" class="field" placeholder="Alamat (opsional)" maxlength="200">
+        <input id="tk-koor" class="field sm:col-span-2" placeholder="Koordinat dari Google Maps, mis. -1.2379, 116.8529 (opsional)" maxlength="40">
+        <button class="btn-gold sm:col-span-2" type="submit">Simpan toko</button>
+      </form>` + (tokoList.length ? tokoList.map((t) => `
+      <article class="bg-zinc-900 border border-zinc-800 rounded-2xl p-4 space-y-2 ${t.aktif ? '' : 'opacity-60'}">
+        <div class="flex justify-between items-start gap-2">
+          <div><p class="font-bold">🏪 ${esc(t.nama)} <span class="text-xs text-amber-300">${esc(t.id)}</span></p>
+          <p class="text-xs text-zinc-400">${esc(t.alamat || 'Tanpa alamat')} · ${t.lat !== '' ? '📍 koordinat terisi' : 'tanpa koordinat'}</p></div>
+          <span class="text-xs px-2 py-0.5 rounded-full border ${t.aktif ? 'border-emerald-500/50 text-emerald-300' : 'border-red-500/50 text-red-300'}">${t.aktif ? 'Buka' : 'Tutup'}</span>
+        </div>
+        <div class="flex gap-2 flex-wrap">
+          <button class="btn-ghost !min-h-[40px] text-sm" data-tedit="${esc(t.id)}">Edit</button>
+          <button class="btn-ghost !min-h-[40px] text-sm" data-ttoggle="${esc(t.id)}">${t.aktif ? 'Tutup toko' : 'Buka toko'}</button>
+        </div>
+      </article>`).join('') : '<p class="col-span-full text-center text-zinc-500 py-8">Belum ada toko.</p>');
+  }
+  function parseKoor(s) {
+    const m = String(s || '').match(/(-?\d+(?:\.\d+)?)\s*[,;\s]\s*(-?\d+(?:\.\d+)?)/);
+    return m ? { lat: m[1], lng: m[2] } : null;
+  }
+  async function simpanToko(p) {
+    try { await api({ aksi: 'admin_toko_simpan', token, ...p }); toast('Toko disimpan'); await muatToko(); }
+    catch (e) { toast(e.server ? e.message : 'Koneksi bermasalah.', true); }
+  }
+  document.addEventListener('submit', (e) => {
+    if (e.target.id !== 'form-toko') return;
+    e.preventDefault();
+    const teks = $('#tk-koor').value.trim();
+    const k = teks ? parseKoor(teks) : { lat: '', lng: '' };
+    if (!k) { toast('Koordinat tidak terbaca. Contoh: -1.2379, 116.8529', true); return; }
+    simpanToko({ id: $('#tk-id').value, nama: $('#tk-nama').value, alamat: $('#tk-alamat').value, lat: k.lat, lng: k.lng, aktif: true });
+  });
+  document.addEventListener('click', (e) => {
+    const ed = e.target.closest('[data-tedit]'), tg = e.target.closest('[data-ttoggle]');
+    if (ed) {
+      const t = tokoList.find((x) => x.id === ed.dataset.tedit); if (!t) return;
+      $('#tk-id').value = t.id; $('#tk-nama').value = t.nama; $('#tk-alamat').value = t.alamat || '';
+      $('#tk-koor').value = t.lat !== '' ? t.lat + ', ' + t.lng : '';
+      $('#tk-nama').scrollIntoView({ block: 'center', behavior: 'smooth' });
+    } else if (tg) {
+      const t = tokoList.find((x) => x.id === tg.dataset.ttoggle); if (!t) return;
+      if (t.aktif && !confirm('Tutup toko "' + t.nama + '"? Menunya tidak bisa dipesan sampai dibuka lagi.')) return;
+      simpanToko({ id: t.id, nama: t.nama, alamat: t.alamat || '', lat: t.lat, lng: t.lng, aktif: !t.aktif });
     }
   });
 
